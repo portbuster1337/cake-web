@@ -17,8 +17,10 @@ export function asset(path: string): string {
 
 /** Tinted SVG icon (CakeImageWidget with a srcIn color filter). */
 export function Icon({ src, size = 24, w, h, color, style, class: cls }: { src: string; size?: number; w?: number; h?: number; color?: string; style?: JSX.CSSProperties; class?: string }) {
-  const url = asset(src);
-  return <span class={`icon ${cls ?? ''}`} aria-hidden="true" style={{ width: `${w ?? size}px`, height: `${h ?? size}px`, '--src': `url("${url}")`, color, ...style } as JSX.CSSProperties} />;
+  // the mask URL must be absolute: url() inside a stylesheet rule would resolve against the CSS file
+  const url = typeof document !== 'undefined' ? new URL(asset(src), document.baseURI).href : asset(src);
+  const m = `url("${url}")`;
+  return <span class={`icon ${cls ?? ''}`} aria-hidden="true" style={{ width: `${w ?? size}px`, height: `${h ?? size}px`, WebkitMaskImage: m, maskImage: m, color, ...style } as JSX.CSSProperties} />;
 }
 
 /** Untinted image (pre-colored SVG/PNG). */

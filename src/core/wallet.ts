@@ -202,6 +202,14 @@ export interface WalletAddressEntry {
   txCount?: number;
 }
 
+export interface ReceiveOption {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  common?: boolean;
+}
+
 export interface WalletAccount {
   index: number;
   label: string;
@@ -337,7 +345,7 @@ export abstract class WalletBase {
   abstract priorities(): TransactionPriorityOption[];
   abstract defaultPriority(): PriorityId;
   /** estimated fee for one output of `amount` at `priority` (atomic units) */
-  abstract estimateFee(priority: PriorityId, amount?: bigint, asset?: string): Promise<bigint>;
+  abstract estimateFee(priority: PriorityId, amount?: bigint, asset?: string, customRate?: number): Promise<bigint>;
   abstract createTransaction(c: TransactionCredentials): Promise<PendingTransaction>;
 
   abstract validateAddress(address: string, asset?: string): boolean;
@@ -351,6 +359,25 @@ export abstract class WalletBase {
   async verifyMessage(_message: string, _signature: string, _address?: string): Promise<boolean> {
     throw new Error('Message verification is not supported for this wallet');
   }
+
+  /** receive-page address types (bitcoin_receive_page_option.dart etc.) */
+  receiveOptions(): ReceiveOption[] {
+    return [];
+  }
+  get receiveOption(): string | undefined {
+    return undefined;
+  }
+  setReceiveOption(_id: string): void {}
+  /** the receive address changes after each payment (auto-generate) */
+  get rotatesAddresses(): boolean {
+    return false;
+  }
+  /** wallets with an own-address list (Addresses / Label buttons on Receive) */
+  get hasAddressList(): boolean {
+    return false;
+  }
+  /** make an address the receive address */
+  selectReceiveAddress(_address: string): void {}
 
   /** a new receive address (subaddress / next unused) */
   async newAddress(_label?: string, _type?: string): Promise<WalletAddressEntry | null> {

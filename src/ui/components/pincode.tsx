@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
+import { Icon } from './core.tsx';
 
 export interface PinCodeProps {
   title: string;
@@ -85,7 +86,7 @@ export function PinCode({ title, length, onFull, hasLengthSwitcher, onLengthChan
             <span />
           ) : d === -2 ? (
             <button type="button" aria-label={t('delete')} onClick={pop} style={keyStyle}>
-              <img src="./cake/images/delete_icon.png" alt="" style={{ width: '26px', filter: 'none' }} class="pin-del" />
+              <Icon src="assets/images/delete_icon.png" w={28} h={20} color="var(--primary)" />
             </button>
           ) : (
             <button type="button" id={`pin_code_button_${d}_key`} onClick={() => push(d)} style={{ ...keyStyle, fontSize: '30px', fontWeight: 600, color: 'var(--on-surface-variant)' }}>

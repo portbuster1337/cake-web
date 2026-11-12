@@ -26,6 +26,22 @@ export interface Settings {
   shouldShowMarketPlaceInDashboard: boolean;
   showAddressBookPopupEnabled: boolean;
   displayAmountsInSatoshi: boolean;
+  /** 0 = sats (LN), 1 = BTC, 2 = sats */
+  bitcoinAmountDisplay: 0 | 1 | 2;
+  useBlinkProtection: boolean;
+  lookupsLnurl: boolean;
+  lookupsZcashNames: boolean;
+  lookupsZcashMe: boolean;
+  customElectrumFeeRate: number;
+  enableDuressPin: boolean;
+  sortBalanceBy: 0 | 1 | 2;
+  walletListOrderType: 0 | 1 | 2 | 3;
+  walletListAscending: boolean;
+  contactListOrderType: 0 | 1 | 2 | 3;
+  contactListAscending: boolean;
+  backupPassword: string;
+  showCombinedBalance: Record<string, boolean>;
+  favoriteToken: Record<string, string | null>;
   syncStatusDisplayMode: SyncStatusDisplayMode;
   /** auto-generate subaddresses / addresses */
   autoGenerateSubaddressStatus: 'initialized' | 'enabled' | 'disabled';
@@ -114,7 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   themeRaw: null,
   balanceDisplayMode: 'availableBalance',
   hiddenBalanceToggles: 0,
-  shouldSaveRecipientAddress: false,
+  shouldSaveRecipientAddress: true,
   fiatApiMode: 'enabled',
   exchangeStatus: 'enabled',
   disableTradeOption: false,
@@ -123,9 +139,24 @@ export const DEFAULT_SETTINGS: Settings = {
   shouldShowMarketPlaceInDashboard: true,
   showAddressBookPopupEnabled: true,
   displayAmountsInSatoshi: false,
-  syncStatusDisplayMode: 'eta',
+  bitcoinAmountDisplay: 0,
+  useBlinkProtection: true,
+  lookupsLnurl: true,
+  lookupsZcashNames: true,
+  lookupsZcashMe: true,
+  customElectrumFeeRate: 1,
+  enableDuressPin: false,
+  sortBalanceBy: 0,
+  walletListOrderType: 0,
+  walletListAscending: true,
+  contactListOrderType: 0,
+  contactListAscending: true,
+  backupPassword: '',
+  showCombinedBalance: {},
+  favoriteToken: {},
+  syncStatusDisplayMode: 'blocksRemaining',
   autoGenerateSubaddressStatus: 'initialized',
-  pinTimeOutDuration: 1,
+  pinTimeOutDuration: 10,
   pinLength: 4,
   allowBiometricalAuthentication: false,
   useTOTP2FA: false,

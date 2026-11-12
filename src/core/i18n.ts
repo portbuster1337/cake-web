@@ -83,6 +83,8 @@ export function detectLanguage(): string {
 }
 
 export function fill(s: string, args?: Record<string, string | number>): string {
+  // the .arb files carry escaped newlines ("\\n"), which Cake's generator turns into real ones
+  if (s.includes('\\n')) s = s.replace(/\\n/g, '\n');
   if (!args) return s;
   return s.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => {
     const k = a ?? b;

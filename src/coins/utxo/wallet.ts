@@ -437,6 +437,36 @@ export class UtxoWallet extends WalletBase {
     this.receiveAddress.value = this.currentReceiveAddress();
   }
 
+  get hasAddressList(): boolean {
+    return true;
+  }
+
+  get rotatesAddresses(): boolean {
+    return this.ctx.settings().autoGenerateSubaddressStatus !== 'disabled';
+  }
+
+  receiveOptions() {
+    const I = 'address-type-picker-icons/';
+    if (this.coin === 'btc' && !this.info.hardwareWalletType) {
+      return [
+        { id: 'p2wpkh', title: 'Standard', description: 'Default (P2WPKH)', icon: `${I}btc_standard.svg`, common: true },
+        { id: 'p2tr', title: 'Taproot', description: 'P2TR', icon: `${I}taproot.svg` },
+        { id: 'p2wsh', title: 'Segwit', description: 'P2WSH', icon: `${I}segwit.svg` },
+        { id: 'p2sh', title: 'Segwit-Compatible', description: 'P2SH', icon: `${I}segwit.svg` },
+        { id: 'p2pkh', title: 'Legacy', description: 'P2PKH', icon: `${I}legacy.svg` },
+      ];
+    }
+    return [];
+  }
+
+  get receiveOption(): string {
+    return this.state?.addressPageType;
+  }
+
+  setReceiveOption(id: string): void {
+    this.setAddressPageType(id as AddressType);
+  }
+
   get addressPageType(): AddressType {
     return this.state.addressPageType;
   }
