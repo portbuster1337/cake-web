@@ -2,7 +2,7 @@
 // import the app layer): encrypted per-wallet cache, its WalletInfo, the
 // current node of its type, settings, and its network isolation scope.
 
-import type { WalletInfo } from './wallet.ts';
+import type { WalletInfo, WalletSecrets } from './wallet.ts';
 import type { Node } from './nodes.ts';
 import type { Settings } from '../app/settings.ts';
 
@@ -10,6 +10,7 @@ export interface EngineContext {
   cacheGet<T>(key: string): Promise<T | undefined>;
   cachePut(key: string, v: unknown): Promise<void>;
   saveInfo(info: WalletInfo): Promise<void>;
+  saveSecrets(s: WalletSecrets): Promise<void>;
   node(pow?: boolean): Node;
   settings(): Settings;
   /** every request of this wallet uses this isolation scope (own Tor circuits) */

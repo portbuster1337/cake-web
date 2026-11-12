@@ -303,6 +303,7 @@ setEngineContextFactory((info) => ({
   cacheGet: (k) => walletCache.get(info.id, k),
   cachePut: (k, v) => walletCache.put(info.id, k, v),
   saveInfo: (i) => saveWalletInfo(i),
+  saveSecrets: (sec) => saveSecrets(info.id, sec),
   node: (pow) => currentNode(info.type, pow),
   settings: () => settings.value,
   scope: `wallet:${info.id}`,

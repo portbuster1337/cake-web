@@ -18,6 +18,8 @@ export async function launch({ browser = 'chrome', profile, width = 1100, height
     executablePath: BROWSERS[browser],
     headless: true,
     userDataDir: profile,
+    // long waits (wallet syncs) are single CDP calls: the 180 s default would cut them off
+    protocolTimeout: 3_600_000,
     acceptInsecureCerts: insecureCerts,
     args: firefox ? [] : ['--no-sandbox', `--window-size=${width},${height}`, ...(insecureCerts ? ['--ignore-certificate-errors'] : [])],
     defaultViewport: { width, height },
