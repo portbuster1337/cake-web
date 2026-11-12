@@ -54,7 +54,7 @@ function pagesHeaders(): Plugin {
         `  Content-Security-Policy: ${CSP}; frame-ancestors 'none'`,
         '  X-Frame-Options: DENY',
         '  Referrer-Policy: no-referrer',
-        '  X-Content-Type-Options: nosniff',
+        // (X-Content-Type-Options: nosniff is sent by git-pages itself and is not on its allowlist)
         '  Permissions-Policy: microphone=(), geolocation=(), payment=(), browsing-topics=(), interest-cohort=()',
       ];
       const worker = [`  Content-Security-Policy: ${WORKER_CSP}`, '  Referrer-Policy: no-referrer'];
