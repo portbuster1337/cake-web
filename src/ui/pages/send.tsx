@@ -30,7 +30,7 @@ interface Recipient {
 
 const emptyRecipient = (asset?: string): Recipient => ({ address: '', amount: '', fiatMode: false, sendAll: false, asset, note: '' });
 
-interface AssetInfo {
+export interface AssetInfo {
   key: string;
   symbol: string;
   decimals: number;
@@ -39,7 +39,7 @@ interface AssetInfo {
   icon?: string;
 }
 
-function assetsOf(w: WalletBase): AssetInfo[] {
+export function assetsOf(w: WalletBase): AssetInfo[] {
   const list: AssetInfo[] = [{ key: w.currency.key, symbol: w.currency.title, decimals: w.currency.decimals, balance: w.balances.value[w.currency.key]?.available ?? 0n, api: apiString(w.currency), icon: w.currency.iconPath ?? undefined }];
   const extra: any[] = (w as any).assetList?.() ?? [];
   for (const a of extra) if (a.key !== w.currency.key) list.push({ key: a.key, symbol: a.symbol, decimals: a.decimals, balance: a.balance, api: a.api, icon: a.icon });
@@ -226,7 +226,7 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
               </div>
             </div>
           </div>
-          {(priorities.length > 0 || w.hasCoinControl) && (
+          {(w.hasFees || w.hasCoinControl) && (
             <div style={{ background: 'var(--surface-container)', borderRadius: '20px', overflow: 'hidden' }}>
               <button type="button" class="rowx" id="send_advanced" onClick={() => setAdvOpen(!advOpen)} style={{ width: '100%', height: '48px', padding: '0 16px', background: 'none', border: 0, color: 'var(--primary)', justifyContent: 'space-between', cursor: 'pointer' }}>
                 <span>{t('advanced_settings')}</span>
@@ -234,7 +234,7 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
               </button>
               {advOpen && (
                 <div style={{ borderTop: '1px solid var(--outline-variant)' }}>
-                  <button type="button" class="row tap" id="send_fees" onClick={async () => {
+                  {w.hasFees && <button type="button" class={`row${priorities.length ? ' tap' : ''}`} id="send_fees" onClick={async () => {
                     if (!priorities.length) return;
                     const v = await pickFee(w, priority, customRate);
                     if (v) {
@@ -247,7 +247,7 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
                       <span class="sub">{fee !== null ? `~${formatFixed(fee, w.currency.decimals, { fractionDigits: 8 })} ${w.currency.title}${feeFiat !== null ? ` (${formatFiatAmount(feeFiat)} ${fiatCode})` : ''}` : '…'}{prio ? ` · ${prio.label}` : ''}</span>
                     </span>
                     {priorities.length > 0 && <Icon src="arrow_forward.svg" w={8} h={14} color="var(--on-surface-variant)" />}
-                  </button>
+                  </button>}
                   {w.hasCoinControl && (
                     <button type="button" class="row tap" id="send_coin_control" onClick={async () => {
                       const v = await nav.pushForResult<string[]>(Routes.unspentCoinsList, { canEdit: true, selected: selectedUtxos });
@@ -286,7 +286,7 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
   );
 }
 
-function pickAsset(w: WalletBase, assets: AssetInfo[], selected: string): Promise<string | undefined> {
+export function pickAsset(w: WalletBase, assets: AssetInfo[], selected: string): Promise<string | undefined> {
   return showSheet<string>((close) => (
     <div class="col" style={{ height: '100%', background: 'var(--surface)' }}>
       <TopBar title={t('select_asset')} onClose={() => close()} />

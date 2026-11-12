@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
-import { AddressText, Button, Field, Icon, MIcon, ModernButton, TopBar, copyText } from '../components/core.tsx';
+import { AddressText, Button, Field, Icon, Img, MIcon, ModernButton, TopBar, asset, copyText } from '../components/core.tsx';
+import { assetsOf, pickAsset } from './send.tsx';
+import { networkIcon } from './tokens.tsx';
 import { showAlert, showSheet, toast } from '../components/overlays.tsx';
 import { QrCode, qrBadge } from '../components/qr.tsx';
 import { registerRoute, Routes } from '../routes.ts';
@@ -19,9 +21,10 @@ function chunkFor(w: WalletBase): number {
   return w.type === 'monero' || w.type === 'wownero' || w.type === 'zano' ? 6 : 4;
 }
 
-function ReceivePage() {
+function ReceivePage({ args }: { args?: { asset?: string } }) {
   const w = currentWallet.value;
   const [amount, setAmount] = useState('');
+  const [assetKey, setAssetKey] = useState<string | undefined>(args?.asset);
   const [large, setLarge] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
@@ -30,11 +33,16 @@ function ReceivePage() {
   const opts = w.receiveOptions();
   const opt = opts.find((o) => o.id === w.receiveOption);
   const entry = w.addresses.value.find((a) => a.address === address);
-  const uri = receiveUri({ type: w.type, address, amount, chainId: (w as any).chainId });
+  // token wallets: the selected token (tokenCurrency in wallet_address_list_view_model.dart)
+  const assets = assetsOf(w);
+  const token = assetKey && assetKey !== w.currency.key ? assets.find((a) => a.key === assetKey) : undefined;
+  const uri = receiveUri({ type: w.type, address, amount, chainId: (w as any).chainId, token: token?.key, tokenDecimals: token?.decimals });
+  const symbol = token?.symbol ?? w.currency.title;
   const dismissed = settings.value.dismissedPromos[`receive_info:${w.type}`];
   const multichain = isEvm(w.type) || w.type === 'solana' || w.type === 'tron' || w.type === 'zano';
   const info = multichain ? `${t('infobox_multichain')} ${WALLET_TYPE_NAME[w.type]}` : w.rotatesAddresses ? t('infobox_auto_address') : null;
-  const fiat = amount ? fiatValue(Number(amount.replace(',', '.')), apiString(w.currency)) : null;
+  const fiat = amount ? fiatValue(Number(amount.replace(',', '.')), token?.api ?? apiString(w.currency)) : null;
+  const shownTokens = assets.slice(1).filter((a) => a.icon).slice(0, 4);
   return (
     <div class="page solid" id="receive_page">
       <TopBar
@@ -66,13 +74,19 @@ function ReceivePage() {
         {large && <img src={`./cake/new-ui/cakewallet-wordmark${document.documentElement.dataset.theme === 'light' ? '-light' : ''}.svg`} alt="Cake Wallet" style={{ height: '45px' }} />}
         {amount && !large && (
           <div class="rowx gap4">
-            <span style={{ background: 'var(--surface-container)', borderRadius: '12px', padding: '8px', color: 'var(--primary)', fontWeight: 500, fontSize: '16px' }}>{amount} {w.currency.title}</span>
+            <span style={{ background: 'var(--surface-container)', borderRadius: '12px', padding: '8px', color: 'var(--primary)', fontWeight: 500, fontSize: '16px' }}>{amount} {symbol}</span>
             {fiat !== null && <span class="muted" style={{ padding: '8px', fontWeight: 500, fontSize: '16px' }}>{formatFiatAmount(fiat)} {settings.value.fiatCurrency}</span>}
           </div>
         )}
         <div onClick={() => setLarge(!large)} style={{ cursor: 'pointer', transform: large ? 'scale(1.35)' : undefined, transition: 'transform 500ms cubic-bezier(.2,.9,.25,1)', margin: large ? '60px 0' : 0 }} title={large ? t('qr_close_fullscreen') : t('qr_fullscreen')}>
-          <QrCode data={uri} size={230} logo={qrBadge(w.type)} id="receive_qr" />
+          <QrCode data={uri} size={230} logo={token?.icon ? asset(token.icon) : qrBadge(w.type)} id="receive_qr" />
         </div>
+        {token && (
+          <div class="rowx gap8" id="receive_token">
+            <span style={{ fontSize: '18px', fontWeight: 600, color: 'var(--primary)' }}>{token.symbol}</span>
+            <span class="rowx" style={{ gap: '4px', background: 'var(--surface-container)', borderRadius: '999px', padding: '4px 8px 4px 4px', color: 'var(--primary)', fontSize: '12px', fontWeight: 500 }}><Img src={networkIcon(w)} size={16} />{WALLET_TYPE_NAME[w.type]}</span>
+          </div>
+        )}
         {!large && opts.length > 1 && opt && (
           <button type="button" class="rowx gap12" id="receive_address_type" onClick={() => void pickAddressType(w)} style={{ background: 'none', border: 0, color: 'var(--primary)', fontSize: '16px', cursor: 'pointer' }}>
             <Icon src={opt.icon} size={24} />
@@ -108,8 +122,11 @@ function ReceivePage() {
               }}
             />
             <ModernButton svg="set-amount.svg" size={60} iconSize={32} caption={t('set_amount')} id="receive_set_amount" onClick={async () => {
-              const v = await setAmountModal(w, amount);
-              if (v !== undefined) setAmount(v);
+              const v = await setAmountModal(w, amount, assetKey);
+              if (v !== undefined) {
+                setAmount(v.amount);
+                setAssetKey(v.asset);
+              }
             }} />
             {w.hasAddressList && !entry?.label && entry && <ModernButton svg="add-label.svg" size={60} iconSize={32} caption={t('label')} onClick={() => void editLabel(w, entry)} />}
             {w.hasAddressList && <ModernButton svg="addr-book.svg" size={60} iconSize={32} caption={t('addresses')} id="receive_addresses" onClick={() => nav.push(Routes.receiveAddresses)} />}
@@ -121,6 +138,16 @@ function ReceivePage() {
               <Icon src="info.svg" size={16} color="var(--on-surface-variant)" />
               <div class="col grow" style={{ gap: '10px' }}>
                 <span style={{ fontSize: '12px', fontWeight: 300, color: 'var(--on-surface-variant)' }}>{info}</span>
+                {multichain && shownTokens.length > 0 && (
+                  <div class="rowx" style={{ gap: '8px' }}>
+                    <Img src={networkIcon(w)} size={20} />
+                    <span style={{ width: '1px', height: '28px', background: 'var(--surface-container-high)' }} />
+                    <span class="rowx">
+                      {shownTokens.map((a, i) => <span style={{ marginLeft: i ? '-8px' : 0, borderRadius: '50%', border: '1.5px solid var(--surface-container)', display: 'inline-flex' }}><Img src={a.icon} size={24} round /></span>)}
+                      <span style={{ marginLeft: '-8px', width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(255,255,255,.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><MIcon name="add" size={16} color="rgba(255,255,255,.5)" /></span>
+                    </span>
+                  </div>
+                )}
                 <button type="button" style={{ alignSelf: 'flex-end', background: 'none', border: 0, color: 'var(--primary)', fontSize: '12px', fontWeight: 300, cursor: 'pointer' }} onClick={() => updateSettings((s) => ({ dismissedPromos: { ...s.dismissedPromos, [`receive_info:${w.type}`]: true } }))}>
                   {t('dismiss')}
                 </button>
@@ -165,20 +192,33 @@ function pickAddressType(w: WalletBase) {
   });
 }
 
-function setAmountModal(w: WalletBase, initial: string): Promise<string | undefined> {
-  return showSheet<string>((close) => <AmountModal w={w} initial={initial} close={close} />);
+function setAmountModal(w: WalletBase, initial: string, assetKey?: string): Promise<{ amount: string; asset?: string } | undefined> {
+  return showSheet<{ amount: string; asset?: string }>((close) => <AmountModal w={w} initial={initial} assetKey={assetKey} close={close} />);
 }
 
-function AmountModal({ w, initial, close }: { w: WalletBase; initial: string; close: (v?: string) => void }) {
+function AmountModal({ w, initial, assetKey, close }: { w: WalletBase; initial: string; assetKey?: string; close: (v?: { amount: string; asset?: string }) => void }) {
   const [v, setV] = useState(initial);
-  const bad = v && tryParseFixed(v, w.currency.decimals) === null;
+  const [key, setKey] = useState(assetKey ?? w.currency.key);
+  const assets = assetsOf(w);
+  const sel = assets.find((a) => a.key === key) ?? assets[0];
+  const bad = v && tryParseFixed(v, sel.decimals) === null;
   return (
     <div style={{ padding: '0 0 24px' }}>
       <TopBar title={t('set_amount')} onClose={() => close()} />
       <div class="col gap12" style={{ padding: '0 18px' }}>
+        {assets.length > 1 && (
+          <>
+            <div>{t('token')}</div>
+            <button type="button" class="rowx" id="receive_token_select" onClick={async () => { const k = await pickAsset(w, assets, sel.key); if (k) setKey(k); }} style={{ height: '60px', background: 'var(--surface-container)', borderRadius: '16px', border: 0, padding: '0 16px', gap: '8px', color: 'var(--on-surface)', cursor: 'pointer' }}>
+              <Img src={sel.icon} size={32} round />
+              <span class="grow" style={{ textAlign: 'start' }}>{sel.symbol.toUpperCase()}</span>
+              <Icon src="dropdown_arrow.svg" w={12} h={7} color="var(--primary)" />
+            </button>
+          </>
+        )}
         <div>{t('amount')}</div>
-        <Field value={v} onInput={setV} placeholder="0.00000000" inputMode="decimal" error={bad ? t('error_text_amount') : null} suffix={<span class="suffix">{w.currency.title}</span>} id="receive_amount_input" autoFocus />
-        <Button disabled={!!bad} id="receive_amount_continue" onClick={() => close(v.replace(',', '.'))}>{t('continue_text')}</Button>
+        <Field value={v} onInput={setV} placeholder="0.00000000" inputMode="decimal" error={bad ? t('error_text_amount') : null} suffix={<span class="suffix">{sel.symbol}</span>} id="receive_amount_input" autoFocus />
+        <Button disabled={!!bad} id="receive_amount_continue" onClick={() => close({ amount: v.replace(',', '.'), asset: sel.key === w.currency.key ? undefined : sel.key })}>{t('continue_text')}</Button>
       </div>
     </div>
   );

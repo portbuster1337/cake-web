@@ -323,6 +323,10 @@ export abstract class WalletBase {
   get hasTokens(): boolean {
     return false;
   }
+  /** FeesViewModel.hasFees: everything but Nano shows a fee */
+  get hasFees(): boolean {
+    return true;
+  }
   get isWatchOnly(): boolean {
     return !!this.info.isWatchOnly;
   }

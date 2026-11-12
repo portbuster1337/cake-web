@@ -6,6 +6,7 @@ import './restore.tsx';
 import './receive.tsx';
 import './send.tsx';
 import './coins.tsx';
+import './tokens.tsx';
 import './settings/main.tsx';
 import './settings/connections.tsx';
 import './settings/pages.tsx';

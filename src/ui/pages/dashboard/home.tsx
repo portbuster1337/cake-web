@@ -16,6 +16,8 @@ import { HistoryList } from './history.tsx';
 import { nav } from '../../nav.ts';
 import { Routes } from '../../routes.ts';
 import { useEffect } from 'preact/hooks';
+import { isTokenWallet } from '../../../coins/tokens.ts';
+import { assetFiat, openAssetDetails, sortedAssets, TokenIcon, useAssetPrices } from '../tokens.tsx';
 
 const SYNC_HEAVY = new Set(['monero', 'wownero', 'decred', 'zcash', 'zano']);
 
@@ -126,14 +128,34 @@ function WalletHome({ w }: { w: WalletBase }) {
   const cur = w.currency;
   const api = apiString(cur);
   useEffect(() => watchPrice(api), [api]);
+  useAssetPrices(w);
   void prices.value;
   const bal = w.balances.value[cur.key] ?? { available: 0n, full: 0n, pending: 0n };
   const hidden = s.balanceDisplayMode === 'hiddenBalance';
   const sats = w.type === 'bitcoin' && s.displayAmountsInSatoshi;
   const shown = s.balanceDisplayMode === 'fullBalance' ? bal.full : bal.available;
-  const amountStr = sats ? shown.toString() : formatFixed(shown, cur.decimals, { fractionDigits: Math.min(cur.decimals, 8) });
-  const fiat = fiatValue(Number(formatFixed(shown, cur.decimals)), api);
-  const fiatStr = s.fiatApiMode === 'disabled' ? undefined : `${s.fiatCurrency} ${formatFiatAmount(fiat ?? 0)}`;
+  // token wallets: the combined fiat balance (default), or the favorite token (cards_view.dart, balance_view_model.dart)
+  const tokenW = isTokenWallet(w) ? w : null;
+  const assets = tokenW ? tokenW.assetList() : [];
+  const combined = !!tokenW && assets.length > 1 && (s.showCombinedBalance[w.id] ?? true);
+  const fav = tokenW && !combined ? assets.find((a) => a.address && a.address === s.favoriteToken[w.id]) : undefined;
+  let amountStr: string;
+  let assetStr: string;
+  let fiatStr: string | undefined;
+  if (combined) {
+    amountStr = assets.reduce((sum, a) => sum + assetFiat(a), 0).toFixed(2);
+    assetStr = s.fiatCurrency;
+    fiatStr = ' ';
+  } else if (fav) {
+    amountStr = formatFixed(fav.balance, fav.decimals, { fractionDigits: Math.min(fav.decimals, 8) });
+    assetStr = fav.symbol.toUpperCase();
+    fiatStr = s.fiatApiMode === 'disabled' ? undefined : `${s.fiatCurrency} ${formatFiatAmount(assetFiat(fav))}`;
+  } else {
+    amountStr = sats ? shown.toString() : formatFixed(shown, cur.decimals, { fractionDigits: Math.min(cur.decimals, 8) });
+    assetStr = sats ? 'sats' : cur.title.toUpperCase();
+    const fiat = fiatValue(Number(formatFixed(shown, cur.decimals)), api);
+    fiatStr = s.fiatApiMode === 'disabled' ? undefined : `${s.fiatCurrency} ${formatFiatAmount(fiat ?? 0)}`;
+  }
   const design = designFor(cur.key, s.cardDesigns[w.id]);
   const txs = w.transactions.value;
   const pending = bal.pending ?? 0n;
@@ -149,9 +171,10 @@ function WalletHome({ w }: { w: WalletBase }) {
           <div class="col" style={{ alignItems: 'center', padding: '0 6%' }}>
             <BalanceCard
               design={design}
-              label={w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label ?? t('balance')}
+              label={combined ? t('wallet_balance') : w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label ?? t('balance')}
+              labelDim={combined}
               amount={amountStr}
-              asset={sats ? 'sats' : cur.title.toUpperCase()}
+              asset={assetStr}
               fiat={fiatStr}
               hidden={hidden}
               onLongPress={toggleHidden}
@@ -205,7 +228,7 @@ function AssetsHistory({ w, txs, hidden }: { w: WalletBase; txs: ReturnType<Wall
             <button type="button" class={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>{t('history')}</button>
           </div>
           {tab === 'assets' ? (
-            <button type="button" class="pill" style={{ height: '40px' }} onClick={() => nav.push(Routes.homeSettings)}>
+            <button type="button" class="pill" style={{ height: '40px' }} id="assets_tokens" onClick={() => nav.push(Routes.homeSettings)}>
               {t('tokens')} <Icon src="options_slider.svg" size={16} color="var(--primary)" />
             </button>
           ) : (
@@ -242,23 +265,21 @@ function HistoryListJoined({ w, txs, hidden, joined }: { w: WalletBase; txs: any
 }
 
 function AssetsList({ w, hidden }: { w: WalletBase; hidden: boolean }) {
-  const tokens: any[] = (w as any).assetList?.() ?? [];
-  void prices.value;
+  if (!isTokenWallet(w)) return null;
+  const list = sortedAssets(w);
+  const fiatOn = settings.value.fiatApiMode !== 'disabled';
   return (
-    <div class="list">
-      {tokens.map((a) => {
-        const f = fiatValue(Number(formatFixed(a.balance, a.decimals)), a.api);
-        return (
-          <button type="button" class="row tap" style={{ minHeight: '72px' }} onClick={() => nav.push(Routes.send, { asset: a.key })}>
-            {a.icon ? <Img src={assetUrl(a.icon) ?? a.icon} size={36} round /> : <span style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--primary)', color: 'var(--on-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>{a.symbol.slice(0, 2)}</span>}
-            <span class="lbl" style={{ gap: '4px' }}>
-              <span style={{ fontWeight: 500 }}>{a.name}</span>
-              <span class="muted">{hidden ? '●●●●●●' : `${formatFixed(a.balance, a.decimals, { fractionDigits: 8 })} ${a.symbol.slice(0, 6)}`}</span>
-            </span>
-            <span>{hidden ? '●●●●●' : f === null ? '' : `${settings.value.fiatCurrency} ${formatFiatAmount(f)}`}</span>
-          </button>
-        );
-      })}
+    <div class="col" style={{ padding: '0 2px 64px' }} id="assets_list">
+      {list.map((a, i) => (
+        <button type="button" class="rowx" id={`asset_${a.symbol}`} onClick={() => void openAssetDetails(w, a)} style={{ minHeight: '72px', width: '100%', gap: '12px', padding: '0 12px', border: 0, cursor: 'pointer', color: 'var(--on-surface)', textAlign: 'start', background: 'var(--surface-container)', borderTopLeftRadius: i === 0 ? '18px' : 0, borderTopRightRadius: i === 0 ? '18px' : 0, borderBottomLeftRadius: i === list.length - 1 ? '18px' : 0, borderBottomRightRadius: i === list.length - 1 ? '18px' : 0, borderTop: i ? '1px solid var(--surface-container-high)' : 0 }}>
+          <TokenIcon icon={a.icon} symbol={a.symbol} size={36} />
+          <span class="grow col" style={{ gap: '4px', minWidth: 0 }}>
+            <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</span>
+            <span class="muted">{hidden ? '●●●●●●' : `${formatFixed(a.balance, a.decimals, { fractionDigits: Math.min(a.decimals, 8) })} ${a.symbol.slice(0, 6)}`}</span>
+          </span>
+          {fiatOn && <span>{hidden ? '●●●●●' : `${settings.value.fiatCurrency} ${formatFiatAmount(assetFiat(a))}`}</span>}
+        </button>
+      ))}
     </div>
   );
 }

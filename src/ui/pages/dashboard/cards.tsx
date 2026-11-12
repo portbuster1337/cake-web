@@ -65,7 +65,7 @@ export function designFor(currencyKey: string, custom?: { gradient?: string }): 
   return SPECIAL_DESIGNS[currencyKey] ?? GENERIC_DESIGN;
 }
 
-export function BalanceCard({ design, label, amount, asset, fiat, chips, onLongPress, onMenu, hidden, width = 380 }: { design: CardDesign; label: string; amount: string; asset: string; fiat?: string; chips?: ComponentChildren; onLongPress?: () => void; onMenu?: () => void; hidden?: boolean; width?: number }) {
+export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chips, onLongPress, onMenu, hidden, width = 380 }: { design: CardDesign; label: string; labelDim?: boolean; amount: string; asset: string; fiat?: string; chips?: ComponentChildren; onLongPress?: () => void; onMenu?: () => void; hidden?: boolean; width?: number }) {
   const c = COMBOS[design.combo];
   let pressTimer: ReturnType<typeof setTimeout> | undefined;
   const start = () => {
@@ -100,7 +100,7 @@ export function BalanceCard({ design, label, amount, asset, fiat, chips, onLongP
     >
       {design.bg && <img src={`./cake/new-ui/balance_card_backgrounds/${design.bg}`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} draggable={false} />}
       <div style={{ position: 'absolute', inset: 0, padding: '5%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: '16px', fontWeight: 500 }}>{label}</div>
+        <div style={{ fontSize: '16px', fontWeight: 500, opacity: labelDim ? 0.5 : 1 }} id="balance_card_label">{label}</div>
         <div>
           <div class="rowx" style={{ gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '28px', fontWeight: 500, letterSpacing: '-0.4px' }} id="balance_card_amount">{hidden ? '●●●●●●' : amount}</span>
@@ -119,12 +119,13 @@ export function BalanceCard({ design, label, amount, asset, fiat, chips, onLongP
   );
 }
 
+/** cards_view.dart action chip: bg = backgroundImageColor @ 75 %, label = textColor, icon = textColorSecondary */
 export function CardChip({ label, onClick, icon, combo }: { label: string; onClick?: () => void; icon?: string; combo: Combo }) {
   const c = COMBOS[combo];
   return (
-    <button type="button" onClick={onClick} style={{ border: 0, cursor: 'pointer', borderRadius: '999px', background: c.chip.replace('.784', '.75'), color: combo === 'dark' ? 'rgba(0,0,0,.784)' : 'rgba(255,255,255,.9)', padding: '5px 5px 5px 10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '16px', mixBlendMode: 'normal' }}>
-      <span style={{ color: combo === 'dark' ? 'rgba(0,0,0,.784)' : 'rgba(0,0,0,.784)' }}>{label}</span>
-      {icon ? <Icon src={icon} size={12} /> : <MIcon name="chevronRight" size={16} color="rgba(0,0,0,.45)" />}
+    <button type="button" onClick={onClick} id="balance_card_chip" style={{ border: 0, cursor: 'pointer', borderRadius: '999px', background: `color-mix(in srgb, ${c.chip} 75%, transparent)`, color: c.text, padding: '5px 5px 5px 10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '16px' }}>
+      <span>{label}</span>
+      {icon ? <Icon src={icon} size={12} color={c.secondary} /> : <MIcon name="chevronRight" size={16} color={c.secondary} />}
     </button>
   );
 }

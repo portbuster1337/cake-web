@@ -11,6 +11,7 @@ import { apiString, fiatValue, formatFiatAmount, prices } from '../../../app/pri
 import { settings } from '../../../app/settings.ts';
 import { vault } from '../../../core/vault.ts';
 import { nav } from '../../nav.ts';
+import { isTokenWallet } from '../../../coins/tokens.ts';
 import { Routes } from '../../routes.ts';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -55,11 +56,12 @@ function confirmationsNeeded(w: WalletBase): number {
 }
 
 export function txTitle(w: WalletBase, tx: TransactionInfo): string {
-  if (!tx.isPending) return tx.direction === 'incoming' ? t('received') : t('sent');
+  const suffix = tx.evmSignatureName === 'approval' ? ' (approval)' : '';
+  if (!tx.isPending) return (tx.direction === 'incoming' ? t('received') : t('sent')) + suffix;
   const base = tx.direction === 'incoming' ? t('receiving') : t('sending');
   const need = confirmationsNeeded(w);
-  if (need > 1) return `${base} (${tx.confirmations}/${need})`;
-  return `${base}...`;
+  if (need > 1) return `${base} (${tx.confirmations}/${need})${suffix}`;
+  return `${base}...${suffix}`;
 }
 
 export function txAsset(w: WalletBase, tx: TransactionInfo): { symbol: string; decimals: number; api: string; icon?: string } {
@@ -70,7 +72,10 @@ export function txAsset(w: WalletBase, tx: TransactionInfo): { symbol: string; d
       return w.currency;
     }
   })();
-  if (tx.tokenSymbol) return { symbol: tx.tokenSymbol, decimals: tx.tokenDecimals ?? c.decimals, api: apiString(w.currency, tx.extra?.contract), icon: tx.extra?.icon };
+  if (tx.tokenSymbol) {
+    const a = isTokenWallet(w) ? w.assetList().find((x) => x.key === tx.currency) : undefined;
+    return { symbol: tx.tokenSymbol, decimals: tx.tokenDecimals ?? a?.decimals ?? c.decimals, api: a?.api ?? apiString(w.currency, tx.extra?.contract), icon: a?.icon ?? tx.extra?.icon };
+  }
   return { symbol: c.title, decimals: c.decimals, api: apiString(c), icon: currencyIcon(c) };
 }
 

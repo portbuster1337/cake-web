@@ -87,6 +87,7 @@ export interface Settings {
   useBaseScan: boolean;
   useArbiScan: boolean;
   useBscScan: boolean;
+  useRobinhoodScan: boolean;
   useTronGrid: boolean;
   useMempoolFeeAPI: boolean;
   /** silent payments / mweb */
@@ -192,6 +193,7 @@ export const DEFAULT_SETTINGS: Settings = {
   useBaseScan: true,
   useArbiScan: true,
   useBscScan: true,
+  useRobinhoodScan: true,
   useTronGrid: true,
   useMempoolFeeAPI: true,
   silentPaymentsCardDisplay: true,

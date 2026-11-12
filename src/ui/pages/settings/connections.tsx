@@ -41,6 +41,7 @@ function ConnectionsPage() {
         {chainId === 8453 && <ToggleRow label={t('basescan_history')} value={s.useBaseScan} onChange={(v) => set({ useBaseScan: v })} />}
         {chainId === 42161 && <ToggleRow label={t('arbiscan_history')} value={s.useArbiScan} onChange={(v) => set({ useArbiScan: v })} />}
         {chainId === 56 && <ToggleRow label={t('bscscan_history')} value={s.useBscScan} onChange={(v) => set({ useBscScan: v })} />}
+        {chainId === 4663 && <ToggleRow label={t('robinhoodscan_history')} value={s.useRobinhoodScan} onChange={(v) => set({ useRobinhoodScan: v })} />}
         {w?.type === 'tron' && <ToggleRow label={t('trongrid_history')} value={s.useTronGrid} onChange={(v) => set({ useTronGrid: v })} />}
         {w?.type === 'bitcoin' && (
           <ToggleRow
@@ -405,6 +406,7 @@ const KEY_PROVIDERS: { id: string; label: string; hint: string }[] = [
   { id: 'swapsxyz', label: 'Swaps.xyz', hint: 'x-api-key' },
   { id: 'whynot', label: 'WhyNot', hint: 'API key' },
   { id: 'etherscan', label: 'Etherscan', hint: 'Etherscan V2 API key (EVM history)' },
+  { id: 'blink', label: 'Blink', hint: 'MEV protection for Ethereum/Base sends' },
   { id: 'moralis', label: 'Moralis', hint: 'NFTs, token metadata' },
   { id: 'trongrid', label: 'TronGrid', hint: 'TRON-PRO-API-KEY' },
   { id: 'onramper', label: 'Onramper', hint: 'Buy/Sell' },
