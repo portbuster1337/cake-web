@@ -118,7 +118,7 @@ export type RouteName = (typeof Routes)[keyof typeof Routes];
 
 const registry = new Map<string, FunctionComponent<{ args?: any }>>();
 
-export function registerRoute(name: string, c: FunctionComponent<{ args?: any }>): void {
+export function registerRoute(name: string, c: FunctionComponent<any>): void {
   registry.set(name, c);
 }
 

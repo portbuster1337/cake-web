@@ -143,7 +143,7 @@ export const DEFAULT_SETTINGS: Settings = {
   priority: {},
   moneroSeedType: 'polyseed',
   bitcoinSeedType: 'bip39',
-  nanoSeedType: 'nano',
+  nanoSeedType: 'bip39',
   lookupsTwitter: true,
   lookupsMastodon: true,
   lookupsYatService: true,

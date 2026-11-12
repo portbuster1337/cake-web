@@ -12,6 +12,8 @@ import { settings, loadSettings, updateSettings, resetSettingsLoaded } from './s
 import { coinModule, type NewWalletOptions, type RestoreSeedOptions, type RestoreKeysOptions } from '../coins/module.ts';
 import type { WalletBase, WalletInfo, WalletSecrets } from '../core/wallet.ts';
 import type { WalletType } from '../coins/types.ts';
+import { setEngineContextFactory } from '../core/engine.ts';
+import { currentNode, customNodes, currentNodeIds } from '../core/nodes.ts';
 
 export type Phase = 'boot' | 'welcome' | 'locked' | 'ready';
 
@@ -119,6 +121,7 @@ export async function unlock(pin: string): Promise<UnlockOutcome> {
   resetSettingsLoaded();
   await loadSettings();
   router.online = true;
+  await loadNodes();
   await loadWalletInfos();
   phase.value = 'ready';
   const id = settings.value.currentWalletId ?? walletInfos.value[0]?.id;
@@ -295,3 +298,23 @@ export const walletCache = {
 };
 
 export const hasWallets = computed(() => walletInfos.value.length > 0);
+
+setEngineContextFactory((info) => ({
+  cacheGet: (k) => walletCache.get(info.id, k),
+  cachePut: (k, v) => walletCache.put(info.id, k, v),
+  saveInfo: (i) => saveWalletInfo(i),
+  node: (pow) => currentNode(info.type, pow),
+  settings: () => settings.value,
+  scope: `wallet:${info.id}`,
+}));
+
+/** Node choices live in the encrypted vault (they can reveal which servers you use). */
+export async function loadNodes(): Promise<void> {
+  customNodes.value = (await vault.get<typeof customNodes.value>('nodes:custom')) ?? [];
+  currentNodeIds.value = (await vault.get<typeof currentNodeIds.value>('nodes:current')) ?? {};
+}
+
+export async function saveNodes(): Promise<void> {
+  await vault.put('nodes:custom', customNodes.value);
+  await vault.put('nodes:current', currentNodeIds.value);
+}

@@ -1,7 +1,7 @@
 // UTXO coin parameters (mainnet) and address encoding for Bitcoin,
 // Litecoin, Bitcoin Cash and Dogecoin.
 
-import { p2pkh, p2wpkh, p2sh, p2tr, p2wsh, Address, OutScript } from '@scure/btc-signer';
+import { p2pkh, p2wpkh, p2sh, p2tr, p2wsh, p2ms, Address, OutScript } from '@scure/btc-signer';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { ripemd160 } from '@noble/hashes/legacy.js';
 import { cashaddrEncode, cashaddrDecode } from './cashaddr.ts';
@@ -57,8 +57,8 @@ export function pubkeyToAddress(net: UtxoNetwork, pub: Uint8Array, type: Address
     case 'p2tr':
       return p2tr(pub.length === 33 ? pub.slice(1) : pub, undefined, sn).address!;
     case 'p2wsh':
-      // Cake's single-key P2WSH: <pubkey> OP_CHECKSIG wrapped in witness script hash
-      return p2wsh({ type: 'pk', script: OutScript.encode({ type: 'pk', pubkey: pub }) } as any, sn).address!;
+      // Cake's P2WSH: 1-of-1 bare multisig (OP_1 <K> OP_1 OP_CHECKMULTISIG) on the P2WPKH key
+      return p2wsh(p2ms(1, [pub]), sn).address!;
     default:
       throw new Error(`Unsupported address type ${type}`);
   }
