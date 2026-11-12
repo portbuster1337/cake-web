@@ -1,0 +1,4 @@
+{
+  "comment": "Tor relay entry points this site offers, tried before the built-in public ones. Entries: a tor-js gateway \"ip:port:certhash\" or a WebSocket bridge \"wss://host/tor\" ({ws}://{host}/tor = a bridge on this same site, see bridge/index.mjs).",
+  "relays": []
+}
