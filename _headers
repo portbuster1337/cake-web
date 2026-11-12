@@ -9,5 +9,4 @@
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' ws: wss: https: http: data: blob:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; font-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
-  X-Content-Type-Options: nosniff
   Permissions-Policy: microphone=(), geolocation=(), payment=(), browsing-topics=(), interest-cohort=()
