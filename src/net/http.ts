@@ -1,0 +1,128 @@
+// Convenience helpers on top of the router: JSON over HTTP(S), JSON-RPC,
+// retries on a fresh Tor circuit. Every call goes through the router (Tor).
+
+import { NetRouter, HttpError, PolicyError, type NetRequest, type NetResponse } from './router.ts';
+import { TorConnectError } from './tor.ts';
+
+let current: NetRouter | null = null;
+
+export function setRouter(r: NetRouter): void {
+  current = r;
+}
+
+export function router(): NetRouter {
+  if (!current) throw new Error('Network not initialised');
+  return current;
+}
+
+export interface HttpOptions extends Omit<NetRequest, 'url' | 'body'> {
+  /** extra attempts on Tor/5xx failures, each on a new circuit (default 2) */
+  retries?: number;
+  /** accept these non-2xx statuses instead of throwing */
+  okStatuses?: number[];
+}
+
+const dec = new TextDecoder();
+
+export function text(res: NetResponse): string {
+  return dec.decode(res.body);
+}
+
+function retryable(e: unknown): boolean {
+  if (e instanceof PolicyError) return false;
+  if (e instanceof HttpError) return e.status >= 500 || e.status === 429;
+  if (e instanceof TorConnectError) return true;
+  const msg = (e as Error)?.message ?? '';
+  return /tor|circuit|stream|timed out|connection|reset|EOF|TLS/i.test(msg);
+}
+
+export async function request(url: string, body: Uint8Array | string | undefined, opts: HttpOptions = {}): Promise<NetResponse> {
+  const r = router();
+  const attempts = 1 + (opts.retries ?? 2);
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    if (opts.signal?.aborted) throw new Error('Request cancelled');
+    try {
+      const res = await r.request({ ...opts, url, body });
+      if ((res.status < 200 || res.status >= 300) && !opts.okStatuses?.includes(res.status)) {
+        throw new HttpError(res.status, text(res), url);
+      }
+      return res;
+    } catch (e) {
+      last = e;
+      if (i + 1 >= attempts || !retryable(e)) throw e;
+      r.rotateIsolation(url, opts.scope ?? 'app');
+      await new Promise((ok) => setTimeout(ok, 400 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
+export async function getJson<T = any>(url: string, opts: HttpOptions = {}): Promise<T> {
+  const res = await request(url, undefined, { ...opts, method: opts.method ?? 'GET', headers: { Accept: 'application/json', ...opts.headers } });
+  return parseJson<T>(res, url);
+}
+
+export async function getText(url: string, opts: HttpOptions = {}): Promise<string> {
+  const res = await request(url, undefined, { ...opts, method: opts.method ?? 'GET' });
+  return text(res);
+}
+
+export async function postJson<T = any>(url: string, payload: unknown, opts: HttpOptions = {}): Promise<T> {
+  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const res = await request(url, body, { ...opts, method: opts.method ?? 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...opts.headers } });
+  return parseJson<T>(res, url);
+}
+
+export function parseJson<T>(res: NetResponse, url: string): T {
+  const t = text(res);
+  try {
+    return (t ? JSON.parse(t) : null) as T;
+  } catch {
+    throw new Error(`Invalid JSON from ${new URL(url).host}: ${t.slice(0, 200)}`);
+  }
+}
+
+export class RpcError extends Error {
+  readonly code: number;
+  readonly data: unknown;
+  constructor(message: string, code: number, data?: unknown) {
+    super(message);
+    this.name = 'RpcError';
+    this.code = code;
+    this.data = data;
+  }
+}
+
+let rpcId = 0;
+
+export async function jsonRpc<T = any>(url: string, method: string, params: unknown = [], opts: HttpOptions = {}): Promise<T> {
+  const r = await postJson<any>(url, { jsonrpc: '2.0', id: ++rpcId, method, params }, { okStatuses: [400, 500], ...opts });
+  if (r?.error) throw new RpcError(r.error.message ?? JSON.stringify(r.error), r.error.code ?? -1, r.error.data);
+  if (r === null || typeof r !== 'object' || !('result' in r)) throw new Error(`Bad JSON-RPC response from ${new URL(url).host}`);
+  return r.result as T;
+}
+
+/** Several JSON-RPC calls in one HTTP request (one Tor round trip). */
+export async function jsonRpcBatch<T = any>(url: string, calls: { method: string; params: unknown }[], opts: HttpOptions = {}): Promise<(T | RpcError)[]> {
+  if (!calls.length) return [];
+  const base = rpcId;
+  rpcId += calls.length;
+  const payload = calls.map((c, i) => ({ jsonrpc: '2.0', id: base + i + 1, method: c.method, params: c.params }));
+  const r = await postJson<any[]>(url, payload, opts);
+  if (!Array.isArray(r)) throw new Error(`Bad JSON-RPC batch response from ${new URL(url).host}`);
+  const byId = new Map(r.map((x) => [x.id, x]));
+  return payload.map((p) => {
+    const x = byId.get(p.id);
+    if (!x) return new RpcError('missing response', -1);
+    if (x.error) return new RpcError(x.error.message ?? 'error', x.error.code ?? -1, x.error.data);
+    return x.result as T;
+  });
+}
+
+export function qs(params: Record<string, string | number | boolean | undefined | null>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
