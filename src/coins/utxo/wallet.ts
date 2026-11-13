@@ -688,6 +688,8 @@ export class UtxoWallet extends WalletBase {
   #addAccount(index: number, label: string): void {
     this.state.accountLabels[index] = label;
     this.#ensureInitialAddresses();
+    // listed before it is selected
+    this.#publish();
     this.#accountScans.add(index);
     if (this.indexer) void this.sync(false);
   }

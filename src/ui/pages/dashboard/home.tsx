@@ -1,5 +1,6 @@
 // NewHomePage (lib/new-ui/pages/home_page.dart).
 
+import { accountAmount, accountLayout, openAccountsEducation, readyToManage } from './accounts.tsx';
 import { NftListing } from './nfts.tsx';
 import { isNftWallet } from '../../../nft/nfts.ts';
 import { openBuySellSelector } from '../buy/buy.tsx';
@@ -14,7 +15,7 @@ import { settings, updateSettings } from '../../../app/settings.ts';
 import { isSynced, syncProgress, syncStatusTitle, type WalletBase } from '../../../core/wallet.ts';
 import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
-import { assetUrl } from '../../../coins/types.ts';
+import { assetUrl, WALLET_TYPE_NAME } from '../../../coins/types.ts';
 import { BalanceCard, CardChip, cardStyleKey, designFromStyle, storedCardStyle } from './cards.tsx';
 import { HistoryList, historyItems, getTxNotes, txAsset, orderFilter, ordersForWallet, tradesForWallet, tradeFilter, tradeFilterCount, displayAllTrades, toggleAllTrades, resetTradeFilter, TRADE_FILTER_PROVIDERS, type HistoryItem } from './history.tsx';
 import { nav } from '../../nav.ts';
@@ -129,6 +130,85 @@ export function HomePage() {
   return <WalletHome w={w} />;
 }
 
+/** AccountsPromo: Cake's card announcing Bitcoin accounts (the education, then the accounts page), until dismissed */
+function AccountsPromo({ w }: { w: WalletBase }) {
+  const open = async () => {
+    if (!(await readyToManage(w))) return;
+    await openAccountsEducation();
+    updateSettings((x) => ({ dismissedPromos: { ...x.dismissedPromos, education_accounts: true } }));
+    nav.push(Routes.walletAccountsPage);
+  };
+  return (
+    <div class="col" style={{ padding: '0 16px', alignItems: 'center', gap: '12px' }} id="accounts_promo">
+      <button type="button" class="rowx" onClick={() => void open()} style={{ width: '100%', minHeight: '64px', gap: '12px', padding: '10px 12px', borderRadius: '18px', border: '1px solid var(--outline-variant)', background: 'var(--surface-container)', color: 'var(--on-surface)', cursor: 'pointer', textAlign: 'start' }}>
+        <Img src="assets/new-ui/settings_row_icons/accounts.svg" size={24} />
+        <span class="col grow" style={{ gap: '2px', minWidth: 0 }}>
+          <span style={{ fontWeight: 500 }}>{t('accounts_home_promo_title', { walletName: WALLET_TYPE_NAME[w.type] })}</span>
+          <span class="muted" style={{ fontSize: '12px' }}>{t('accounts_home_promo_description')}</span>
+        </span>
+        <MIcon name="chevronRight" size={16} color="var(--primary)" />
+      </button>
+      <button type="button" id="accounts_promo_dismiss" onClick={() => updateSettings((x) => ({ dismissedPromos: { ...x.dismissedPromos, accounts_home: true } }))} style={{ border: 0, background: 'none', padding: '4px 8px', color: 'var(--primary)', fontSize: '12px', fontWeight: 500, cursor: 'pointer' }}>{t('do_not_show_anymore')}</button>
+    </div>
+  );
+}
+
+/**
+ * CardsView: the visible accounts' cards stacked, the selected one in front and the others behind it in the deck's
+ * order (turning around), each 46 px higher and 4 % smaller; from four cards on 5 px apart, unscaled, and a tap
+ * opens the accounts page. A card behind shows its account's balance; tapping it selects that account.
+ */
+function AccountCardStack({ w, order, amount, asset, fiat, hidden, onLongPress }: { w: WalletBase; order: number[]; amount: string; asset: string; fiat?: string; hidden: boolean; onLongPress: () => void }) {
+  const s = settings.value;
+  const n = order.length;
+  const cur = w.currentAccount.value;
+  const selected = order.includes(cur) ? order.indexOf(cur) : n - 1;
+  // loadCardDesigns: a selected account that is archived gives way to the front card's
+  useEffect(() => {
+    if (!order.includes(cur) && accountLayout(w).hidden.includes(cur)) void (w as { setAccount?: (i: number) => Promise<void> }).setAccount?.(order[n - 1]);
+  }, [cur, order.join(',')]);
+  const compact = n >= 4;
+  const overlap = compact ? 5 : 46;
+  const scaleStep = compact ? 1 : 0.96;
+  const byIndex = new Map(w.accounts.value.map((a) => [a.index, a]));
+  const openAccounts = async () => {
+    if (await readyToManage(w)) nav.push(Routes.walletAccountsPage);
+  };
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '380px', paddingTop: `${overlap * (n - 1)}px`, transition: 'padding-top 200ms ease-out' }} id="home_card_stack">
+      <div style={{ aspectRatio: '1 / 0.62' }} />
+      {order.map((account, visual) => {
+        const behind = (selected - visual + n) % n;
+        // CardsView draws the selected card and at most five behind it
+        if (behind > 5) return null;
+        const a = byIndex.get(account);
+        const front = behind === 0;
+        const design = designFromStyle(storedCardStyle(s.cardDesigns, `${w.id}:${account}`), w.currency.key);
+        const tap = compact ? () => void openAccounts() : front ? undefined : () => void (w as { setAccount?: (i: number) => Promise<void> }).setAccount?.(account);
+        return (
+          <div key={account} id={`home_account_card_${account}`} style={{ position: 'absolute', left: 0, right: 0, top: `${overlap * (n - 1) - behind * overlap}px`, transform: `scale(${scaleStep ** behind})`, zIndex: 10 - behind, transition: 'top 200ms ease-out, transform 200ms ease-out', cursor: tap ? 'pointer' : undefined }}>
+            <BalanceCard
+              design={design}
+              label={a?.label ?? ''}
+              amount={front ? amount : ''}
+              asset={front ? asset : ''}
+              fiat={front ? fiat : undefined}
+              hidden={hidden}
+              selected={front}
+              id={front ? 'balance_card' : `balance_card_${account}`}
+              accountBalance={accountAmount(w, a?.balance ?? 0n).amount}
+              onClick={tap}
+              onLongPress={front ? onLongPress : undefined}
+              onMenu={front ? () => nav.push(Routes.cardCustomizer, { account }) : undefined}
+              chips={front && !s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => void openBuySellSelector()} /> : undefined}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function WalletHome({ w }: { w: WalletBase }) {
   const s = settings.value;
   const cur = w.currency;
@@ -163,6 +243,8 @@ function WalletHome({ w }: { w: WalletBase }) {
     fiatStr = s.fiatApiMode === 'disabled' ? undefined : `${s.fiatCurrency} ${formatFiatAmount(fiat ?? 0)}`;
   }
   const design = designFromStyle(storedCardStyle(s.cardDesigns, cardStyleKey(w)), cur.key);
+  // CardsView: with accounts on, the visible accounts' cards (one card otherwise)
+  const stack = w.isMultiAccountsEnabled && !combined && !fav ? accountLayout(w).visible : [];
   const txs = w.transactions.value;
   const pending = ADDITIONAL_BALANCE.has(w.type) ? bal.pending ?? 0n : 0n;
   // shouldShowSeedBackupReminder: a new recovery phrase not backed up yet, and some balance (any asset)
@@ -178,18 +260,22 @@ function WalletHome({ w }: { w: WalletBase }) {
         <div class="col" style={{ gap: '24px' }}>
           <HomeTopBar w={w} />
           <div class="col" style={{ alignItems: 'center', padding: '0 6%' }}>
-            <BalanceCard
-              design={design}
-              label={combined ? t('wallet_balance') : (w.isMultiAccountsEnabled ? w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label : undefined) ?? t('balance')}
-              labelDim={combined}
-              amount={amountStr}
-              asset={assetStr}
-              fiat={fiatStr}
-              hidden={hidden}
-              onLongPress={toggleHidden}
-              onMenu={() => nav.push(Routes.cardCustomizer, w.isMultiAccountsEnabled ? { account: w.currentAccount.value } : undefined)}
-              chips={!s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => void openBuySellSelector()} /> : undefined}
-            />
+            {stack.length > 1 ? (
+              <AccountCardStack w={w} order={stack} amount={amountStr} asset={assetStr} fiat={fiatStr} hidden={hidden} onLongPress={toggleHidden} />
+            ) : (
+              <BalanceCard
+                design={design}
+                label={combined ? t('wallet_balance') : (w.isMultiAccountsEnabled ? w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label : undefined) ?? t('balance')}
+                labelDim={combined}
+                amount={amountStr}
+                asset={assetStr}
+                fiat={fiatStr}
+                hidden={hidden}
+                onLongPress={toggleHidden}
+                onMenu={() => nav.push(Routes.cardCustomizer, w.isMultiAccountsEnabled ? { account: w.currentAccount.value } : undefined)}
+                chips={!s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => void openBuySellSelector()} /> : undefined}
+              />
+            )}
             {hidden && s.hiddenBalanceToggles < 10 && <div class="muted" style={{ marginTop: '12px' }}>{t('long_press_show_balance')}</div>}
             {pending > 0n && !hidden && (
               <button type="button" class="rowx gap12" id="unconfirmed_balance" onClick={() => void showAlert({ title: t('balance_confirmation'), content: `${formatFixed(pending, cur.decimals)} ${cur.title} ${t('balance_confirmation_desc_1')}\n\n${t('balance_confirmation_desc_2')}\n\n${t('balance_confirmation_desc_3')}`, right: t('close') })} style={{ marginTop: '12px', width: '100%', height: '48px', background: 'var(--surface-container)', borderRadius: '16px', border: 0, padding: '0 12px', color: 'var(--on-surface)', cursor: 'pointer' }}>
@@ -210,6 +296,8 @@ function WalletHome({ w }: { w: WalletBase }) {
               </button>
             )}
           </div>
+          {/* AccountsPromo: Bitcoin wallets that can have accounts */}
+          {w.type === 'bitcoin' && w.hasAccountsSupport && !s.dismissedPromos.accounts_home && <AccountsPromo w={w} />}
           <div class="rowx" style={{ justifyContent: 'center', gap: '5%', padding: '0 18px' }}>
             <CoinActionButton icon="send.svg" label={t('send')} id="home_send" onClick={() => nav.push(Routes.send)} />
             <CoinActionButton icon="receive.svg" label={t('receive')} id="home_receive" onClick={() => nav.push(Routes.receive)} />

@@ -73,7 +73,8 @@ try {
   });
   await synced();
   step(`new wallet (accounts off): ${JSON.stringify(await view())}`);
-  step(`home card label: ${await text('#balance_card_label')}`);
+  step(`home card label: ${await text('#balance_card_label')}; promo: ${await text('#accounts_promo')}`);
+  await shot('0-promo');
   // the accounts page with the toggle off
   await page.evaluate(() => window.__cw.nav.push('/wallet_accounts_page'));
   await page.waitForSelector('#wallet_accounts_page');
@@ -106,6 +107,30 @@ try {
   const design = await page.evaluate(() => { const w = window.__cw.app.currentWallet.value; return window.__cw.settings.value.cardDesigns[`${w.id}:2`]; });
   step(`after adding: ${JSON.stringify(await view())} design ${JSON.stringify(design)}`);
   await shot('3-added');
+  // the home screen's card stack
+  const stack = () => page.evaluate(() => [...document.querySelectorAll('#home_card_stack > [id^="home_account_card_"]')].map((e) => `${e.id.slice(18)}@${e.style.top}/${e.style.zIndex}${e.querySelector('#balance_card') ? '*' : ''}:${e.querySelector('.card-account-balance')?.innerText ?? ''}`));
+  await page.evaluate(() => window.__cw.nav.reset('/dashboard'));
+  await page.waitForSelector('#home_card_stack');
+  await wait(500);
+  await shot('5-home-stack');
+  step(`home stack: ${JSON.stringify(await stack())} front label ${await text('#balance_card_label')} amount ${await text('#balance_card_amount')}`);
+  // a card behind shows its top strip: tap there
+  const strip = async (sel) => { const b = await (await page.$(sel)).boundingBox(); await page.mouse.click(b.x + b.width / 2, b.y + 12); };
+  await strip('#home_account_card_0');
+  await page.waitForFunction(() => window.__cw.app.currentWallet.value.currentAccount.value === 0, { timeout: 15000 });
+  await wait(500);
+  await shot('6-home-stack-tapped');
+  step(`after tapping account 0's card: ${JSON.stringify(await stack())} front label ${await text('#balance_card_label')} amount ${await text('#balance_card_amount')}`);
+  // four accounts: the compact stack, a tap opens the accounts page
+  await page.evaluate(() => window.__cw.app.currentWallet.value.addAccount('Fourth'));
+  await synced();
+  await page.evaluate(() => window.__cw.nav.reset('/dashboard'));
+  await wait(600);
+  await shot('7-home-compact');
+  step(`compact stack: ${JSON.stringify(await stack())} current ${await page.evaluate(() => window.__cw.app.currentWallet.value.currentAccount.value)} stored ${JSON.stringify(await page.evaluate(() => window.__cw.settings.value.accountCards[window.__cw.app.currentWallet.value.id]))}`);
+  await strip('#home_account_card_1');
+  await page.waitForSelector('#wallet_accounts_page', { timeout: 10000 }).then(() => step('compact tap: the accounts page')).catch(async () => step(`compact tap: top ${await page.evaluate(() => window.__cw.nav.top?.name)}`));
+  await page.evaluate(() => window.__cw.app.currentWallet.value.setAccount(2));
   // the receive and addresses pages of the new account
   await page.evaluate(() => { window.__cw.nav.reset('/dashboard'); window.__cw.nav.push('/receive'); });
   await page.waitForSelector('#receive_page');
@@ -128,6 +153,9 @@ try {
   await page.evaluate(() => window.__cw.nav.reset('/dashboard'));
   await wait(500);
   step(`home card label: ${await text('#balance_card_label')}`);
+  await click('#accounts_promo_dismiss');
+  await wait(300);
+  step(`promo after "don't show": ${!!(await page.$('#accounts_promo'))}`);
   // a reload keeps the accounts and the toggle
   await page.reload({ waitUntil: 'domcontentloaded' });
   await pin('1234');

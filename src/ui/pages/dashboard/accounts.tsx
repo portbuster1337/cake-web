@@ -89,7 +89,7 @@ const amountText = (w: WalletBase, amount: bigint) => {
 
 const accountLabel = (a: { index: number; label: string }) => `${a.index + 1}. ${a.label.trim() || t('unnamed_account')}`;
 
-function readyToManage(w: WalletBase): Promise<boolean> {
+export function readyToManage(w: WalletBase): Promise<boolean> {
   if (isSynced(w.syncStatus.value)) return Promise.resolve(true);
   return showAlert({ title: t('wallet_is_syncing'), content: t('cannot_manage_accounts_during_sync'), right: t('ok') }).then(() => false);
 }

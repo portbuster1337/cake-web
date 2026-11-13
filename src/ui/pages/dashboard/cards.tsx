@@ -1,6 +1,7 @@
 // Balance cards (lib/new-ui/widgets/coins_page/cards/*, cw_core/lib/card_design.dart).
 
 import type { ComponentChildren } from 'preact';
+import { useRef } from 'preact/hooks';
 import { Icon, MIcon, asset } from '../../components/core.tsx';
 
 export type Combo = 'light' | 'dark' | 'black';
@@ -225,18 +226,33 @@ export function MiniCard({ design, width = 50, radius = 5 }: { design: CardDesig
   );
 }
 
-export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chips, onLongPress, onMenu, hidden, width = 380 }: { design: CardDesign; label: string; labelDim?: boolean; amount: string; asset: string; fiat?: string; chips?: ComponentChildren; onLongPress?: () => void; onMenu?: () => void; hidden?: boolean; width?: number }) {
+/**
+ * BalanceCard. `selected: false` is a card behind the selected one in a stack: its balance gives way to the
+ * account's own (`accountBalance`, top right), as only its top strip shows.
+ */
+export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chips, onLongPress, onMenu, hidden, width = 380, selected = true, accountBalance, id = 'balance_card', onClick }: { design: CardDesign; label: string; labelDim?: boolean; amount: string; asset: string; fiat?: string; chips?: ComponentChildren; onLongPress?: () => void; onMenu?: () => void; hidden?: boolean; width?: number; selected?: boolean; accountBalance?: string; id?: string; onClick?: () => void }) {
   const c = COMBOS[design.combo];
-  let pressTimer: ReturnType<typeof setTimeout> | undefined;
+  const fade = { transition: 'opacity 200ms', opacity: selected ? 1 : 0 };
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // the click that ends a long press is not a tap (the long press re-renders the card, hence a ref)
+  const longPressed = useRef(false);
   const start = () => {
+    longPressed.current = false;
     if (!onLongPress) return;
-    pressTimer = setTimeout(() => onLongPress(), 550);
+    pressTimer.current = setTimeout(() => {
+      longPressed.current = true;
+      onLongPress();
+    }, 550);
   };
-  const cancel = () => clearTimeout(pressTimer);
+  const cancel = () => clearTimeout(pressTimer.current);
   return (
     <div
       class="balance-card"
-      id="balance_card"
+      id={id}
+      onClick={(e) => {
+        if (longPressed.current || (e.target as HTMLElement).closest('button')) return;
+        onClick?.();
+      }}
       onPointerDown={start}
       onPointerUp={cancel}
       onPointerLeave={cancel}
@@ -261,15 +277,18 @@ export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chip
     >
       <CardArtwork design={design} />
       <div style={{ position: 'absolute', inset: 0, padding: '5%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: '16px', fontWeight: 500, opacity: labelDim ? 0.5 : 1 }} id="balance_card_label">{label}</div>
-        <div>
+        <div class="rowx" style={{ justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ fontSize: '16px', fontWeight: 500, opacity: labelDim ? 0.5 : 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} id={selected ? 'balance_card_label' : undefined}>{label}</div>
+          {accountBalance !== undefined && <div style={{ fontSize: '14px', flex: 'none', transition: 'opacity 200ms', opacity: selected ? 0 : 1, marginRight: onMenu ? '36px' : 0 }} class="card-account-balance">{hidden ? '●●●●●●' : accountBalance}</div>}
+        </div>
+        <div style={fade}>
           <div class="rowx" style={{ gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '28px', fontWeight: 500, letterSpacing: '-0.4px' }} id="balance_card_amount">{hidden ? '●●●●●●' : amount}</span>
+            <span style={{ fontSize: '28px', fontWeight: 500, letterSpacing: '-0.4px' }} id={selected ? 'balance_card_amount' : undefined}>{hidden ? '●●●●●●' : amount}</span>
             <span style={{ fontSize: '28px', fontWeight: 400, letterSpacing: '-0.4px', color: c.secondary }}>{asset}</span>
           </div>
           {fiat !== undefined && <div style={{ fontSize: '15px', color: c.secondary, marginTop: '2px' }}>{hidden ? '●●●●●' : fiat}</div>}
         </div>
-        <div class="rowx" style={{ minHeight: '30px' }}>{chips && <div class="rowx gap8" style={{ ['--chip-bg' as any]: c.chip }}>{chips}</div>}</div>
+        <div class="rowx" style={{ minHeight: '30px', ...fade }}>{chips && selected && <div class="rowx gap8" style={{ ['--chip-bg' as any]: c.chip }}>{chips}</div>}</div>
       </div>
       {onMenu && (
         <button type="button" aria-label="Menu" onClick={onMenu} style={{ position: 'absolute', top: '8px', right: '8px', width: '40px', height: '40px', border: 0, background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
