@@ -26,6 +26,7 @@ exist.
 | Zcash, Decred | ⏳ | Listed as in Cake; "Coming soon" here (no engine yet). |
 | Zano, Wownero, Haven, Banano | — | Not offered (Haven is deprecated in Cake; the others need native daemons). |
 | Watch-only | ✅ | Monero (address + view key) and Bitcoin/Litecoin (xpub/zpub), as in Cake. |
+| Wallet groups | ✅ | A new wallet can take the recovery phrase of an existing wallet or group (Cake's rules: BIP-39 seed wallets, one wallet of each type); groups in the wallet list. The group identifier is a salted hash like Cake's, with this client's own salt. |
 | Hardware wallets | ❌ | Ledger, Trezor, Coldcard… need USB/Bluetooth/QR device links; the manufacturer page explains this. |
 
 ## App

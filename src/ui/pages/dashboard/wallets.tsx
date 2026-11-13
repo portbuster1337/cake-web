@@ -1,6 +1,7 @@
 // Wallets tab (lib/src/screens/wallet_list/wallet_list_page.dart) and the
 // wallet edit page (lib/src/screens/wallet/wallet_edit_page.dart).
 
+import { walletGroupKey } from '../../../app/groups.ts';
 import { useState } from 'preact/hooks';
 import { t } from '../../../core/i18n.ts';
 import { Button, Field, Img, MIcon, Page } from '../../components/core.tsx';
@@ -28,9 +29,7 @@ export function iconFor(type: WalletType): string | undefined {
   return walletCurrency(type).iconPath ?? undefined;
 }
 
-function groupKey(w: WalletInfo): string {
-  return w.hashedWalletIdentifier || w.parentAddress || w.address || w.id;
-}
+const groupKey = walletGroupKey;
 
 async function switchTo(w: WalletInfo) {
   if (currentWallet.value?.id === w.id) {
@@ -85,7 +84,7 @@ export function WalletListPage() {
               return (
                 <div style={{ background: 'var(--surface-container)', borderRadius: '18px', overflow: 'hidden', margin: '6px 0' }}>
                   <div class="rowx gap12" style={{ padding: '14px 16px', cursor: 'pointer' }} onClick={() => setOpen({ ...open, [k]: !expanded })}>
-                    <img src="./cake/new-ui/navbar/wallets.svg" alt="" style={{ width: '28px', opacity: 0.7 }} />
+                    <MIcon name="account_balance_wallet_outlined" size={28} />
                     <span class="grow" style={{ fontSize: '18px', fontWeight: 500 }}>{name}</span>
                     <button type="button" aria-label={t('edit')} onClick={(e) => { e.stopPropagation(); nav.push(Routes.walletEdit, { groupKey: k, groupName: name }); }} style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'var(--surface)', border: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--on-surface-variant)' }}>
                       <MIcon name="edit" size={14} />

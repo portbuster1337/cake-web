@@ -1,6 +1,7 @@
 // App lifecycle (AppStore + AuthenticationStore + WalletLoadingService in Cake):
 // boot, PIN setup/unlock/lock, wallet registry, opening/closing wallets.
 
+import { groupIdentifierOf } from './groups.ts';
 import { loadTrades, monitorActiveTrades, unloadTrades } from '../exchange/trades.ts';
 import { loadOrders, unloadOrders } from '../cakepay/service.ts';
 import { signal, computed } from '@preact/signals';
@@ -216,6 +217,12 @@ export async function loadWalletInfos(): Promise<void> {
     if (ib >= 0) return 1;
     return a.date - b.date;
   });
+  // wallets from before wallet groups get their identifier once
+  for (const w of list) {
+    if (w.hashedWalletIdentifier) continue;
+    w.hashedWalletIdentifier = groupIdentifierOf(w, await getSecrets(w.id));
+    await vault.put(INFO(w.id), w);
+  }
   walletInfos.value = list;
 }
 
@@ -244,6 +251,8 @@ export function walletNameTaken(name: string, exceptId?: string): boolean {
 }
 
 async function persistNew(info: WalletInfo, secrets: WalletSecrets): Promise<WalletInfo> {
+  // WalletCreationVM: hashedWalletIdentifier, the wallet group
+  if (!info.hashedWalletIdentifier) info.hashedWalletIdentifier = groupIdentifierOf(info, secrets);
   await saveSecrets(info.id, secrets);
   await saveWalletInfo(info);
   return info;

@@ -2,6 +2,7 @@
 // settings) → PreSeedPage → WalletSeedPage → SeedVerificationPage.
 
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
 import { t } from '../../core/i18n.ts';
 import { nav } from '../nav.ts';
 import { registerRoute, Routes } from '../routes.ts';
@@ -14,6 +15,7 @@ import { generateName } from '../../core/names.ts';
 import { createWallet, openWallet, walletNameTaken, getSecrets, walletInfos } from '../../app/app.ts';
 import { settings, updateSettings, type FiatApiMode, type ExchangeApiMode } from '../../app/settings.ts';
 import type { WalletInfo } from '../../core/wallet.ts';
+import { isBip39Wallet, joinableGroups } from '../../app/groups.ts';
 
 const SEED_TYPES_BY_COIN: Partial<Record<WalletType, { id: string; label: string }[]>> = {
   monero: [
@@ -92,7 +94,9 @@ function NewWalletTypePage({ args }: { args?: { restore?: boolean; onSelected?: 
     }
     if (args?.onSelected) return args.onSelected(type);
     if (args?.restore) nav.push(Routes.restoreWallet, { walletType: type });
-    else nav.push(Routes.newWallet, { type });
+    // onTypeSelected: with other wallets, a BIP39 type may share a group's recovery phrase
+    else if (!isBip39Wallet(type) || !walletInfos.value.length) nav.push(Routes.newWallet, { type });
+    else nav.push(Routes.walletGroupDescription, { type });
   };
   return (
     <Page title={args?.restore ? t('wallet_list_restore_wallet') : t('wallet_list_create_new_wallet')} legacy id="new_wallet_type_page">
@@ -123,7 +127,7 @@ interface NewWalletDraft {
 }
 
 /** NewWalletPage */
-function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; parentId?: string } }) {
+function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; parentId?: string; isChildWallet?: boolean } }) {
   const type = args.type;
   const dark = currentPalette().isDark;
   const [name, setName] = useState('');
@@ -143,7 +147,9 @@ function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; 
     try {
       const info = await createWallet(type, { name: n, seedType: args.mnemonic ? 'bip39' : draft.seedType, passphrase: draft.passphrase, wordCount: draft.wordCount, mnemonic: args.mnemonic });
       await openWallet(info.id);
-      nav.push(Routes.preSeedPage, { walletId: info.id });
+      // a wallet in a group: its recovery phrase is the group's, already known
+      if (args.isChildWallet) nav.push(Routes.walletGroupExistingSeedDescriptionPage, { walletId: info.id });
+      else nav.push(Routes.preSeedPage, { walletId: info.id });
     } catch (e) {
       await showAlert({ title: t('new_wallet'), content: (e as Error).message, right: t('ok') });
     } finally {
@@ -158,7 +164,7 @@ function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; 
       id="new_wallet_page"
       footer={
         <>
-          <Button secondary id="new_wallet_page_advanced_settings_button_key" onClick={() => nav.push(Routes.advancedPrivacySettings, { type, draft, onChange: (d: NewWalletDraft) => setDraft(d), isFromRestore: false, isChildWallet: !!args.mnemonic })}>
+          <Button secondary id="new_wallet_page_advanced_settings_button_key" onClick={() => nav.push(Routes.advancedPrivacySettings, { type, draft, onChange: (d: NewWalletDraft) => setDraft(d), isFromRestore: false, isChildWallet: !!args.mnemonic || !!args.isChildWallet })}>
             {t('advanced_settings')}
           </Button>
           <Button id="new_wallet_page_confirm_button_key" disabled={!name.trim()} loading={busy} onClick={next}>
@@ -539,6 +545,158 @@ function SeedVerificationPage({ args }: { args: { walletId: string; seed: string
   );
 }
 
+// ------------------------------------------------------------ wallet groups --
+
+const heroImg = (name: string) => <Img src={`assets/new-ui/hero/${name}_${currentPalette().isDark ? 'dark' : 'light'}.svg`} w={200} h={200} style={{ height: '200px', width: 'auto', maxWidth: '100%' }} />;
+
+/** WalletGroupDescriptionPage: a new recovery phrase, or one of a wallet group */
+function WalletGroupDescriptionPage({ args }: { args: { type: WalletType } }) {
+  return (
+    <Page
+      title={t('wallet_list_create_new_wallet')}
+      legacy
+      id="wallet_group_description_page"
+      footer={
+        <>
+          <Button secondary id="wallet_group_description_page_create_new_seed_button_key" style={{ color: 'var(--on-secondary-container)' }} onClick={() => nav.push(Routes.newWallet, { type: args.type })}>{t('create_new_seed')}</Button>
+          <Button id="wallet_group_description_page_choose_wallet_group_button_key" onClick={() => nav.push(Routes.walletGroupsDisplayPage, { type: args.type })}>{t('choose_wallet_group')}</Button>
+        </>
+      }
+    >
+      <div class="col" style={{ alignItems: 'center', padding: '48px 0 0' }}>
+        {heroImg('wallet_group_options')}
+        <div style={{ height: '40px' }} />
+        <div class="center" style={{ fontSize: '16px', lineHeight: 1.5, color: 'var(--on-surface-variant)' }} id="wallet_group_description_text">
+          {`${t('wallet_group_description_one')} `}
+          <b>{`${t('wallet_group').toLowerCase()} `}</b>
+          {`${t('wallet_group_description_two')} `}
+          <b>{`${t('choose_wallet_group')} `}</b>
+          {`${t('wallet_group_description_three')} `}
+          <b>{`${t('create_new_seed')} `}</b>
+          {t('wallet_group_description_four')}
+        </div>
+      </div>
+    </Page>
+  );
+}
+
+/** GroupedWalletExpansionTile */
+function GroupTile({ title, leading, wallets, selected, onSelect, id }: { title: string; leading: ComponentChildren; wallets?: WalletInfo[]; selected: boolean; onSelect: () => void; id: string }) {
+  const [open, setOpen] = useState(false);
+  const fg = selected ? 'var(--on-primary)' : 'var(--on-surface)';
+  return (
+    <div style={{ borderRadius: '16px', overflow: 'hidden', background: selected ? 'var(--primary)' : 'var(--surface-container)', margin: '0 0 10px' }} id={id}>
+      <div class="rowx" style={{ gap: '16px', padding: '14px 16px', cursor: 'pointer', color: fg }} onClick={onSelect}>
+        {leading}
+        <span class="grow" style={{ fontSize: '18px', fontWeight: 500 }}>{title}</span>
+        {!!wallets?.length && (
+          <button type="button" aria-label={t('show_details')} onClick={(e) => { e.stopPropagation(); setOpen(!open); }} style={{ border: 0, background: 'none', cursor: 'pointer', display: 'flex', padding: 0 }}>
+            <MIcon name="chevronDown" color={selected ? 'var(--on-primary)' : 'var(--on-surface-variant)'} style={{ transform: open ? 'rotate(180deg)' : undefined }} />
+          </button>
+        )}
+      </div>
+      {open && wallets?.map((w) => (
+        <div class="rowx" style={{ gap: '16px', padding: '10px 16px 10px 47px', cursor: 'pointer', color: fg }} onClick={onSelect}>
+          <Img src={walletCurrency(w.type).iconPath ?? undefined} size={32} />
+          <span style={{ fontSize: '18px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** WalletGroupsDisplayPage: the groups a wallet of this type can join, then the new wallet with that recovery phrase */
+function WalletGroupsDisplayPage({ args }: { args: { type: WalletType } }) {
+  const { multi, single } = joinableGroups(walletInfos.value, args.type);
+  const [sel, setSel] = useState<{ group?: string; wallet?: string }>({});
+  const [busy, setBusy] = useState(false);
+  const none = !multi.length && !single.length;
+  const next = async () => {
+    if (none) {
+      nav.push(Routes.newWallet, { type: args.type });
+      return;
+    }
+    // getSelectedWalletMnemonic: the recovery phrase of the group's first wallet
+    const w = sel.group ? multi.find((g) => g.key === sel.group)?.wallets[0] : single.find((x) => x.id === sel.wallet);
+    if (!w) return;
+    setBusy(true);
+    try {
+      const mnemonic = (await getSecrets(w.id)).mnemonic;
+      nav.push(Routes.newWallet, { type: args.type, mnemonic, isChildWallet: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Page
+      title={t('wallet_group')}
+      solid
+      id="wallet_groups_display_page"
+      footer={<Button id="wallet_group_display_page_next_button_key" loading={busy} disabled={!none && !sel.group && !sel.wallet} onClick={() => void next()}>{none ? t('create_new_seed') : t('seed_language_next')}</Button>}
+    >
+      <div class="col" style={{ paddingTop: '48px' }}>
+        {none && (
+          <div class="col" style={{ alignItems: 'center', paddingTop: '16px' }} id="wallet_group_empty">
+            {heroImg('wallet_group_empty')}
+            <div style={{ height: '60px' }} />
+            <div class="center" style={{ fontSize: '16px', lineHeight: 1.5, color: 'var(--on-surface-variant)', whiteSpace: 'pre-line' }}>
+              {`${t('wallet_group_empty_state_text_one')} `}
+              <b>{`${t('create_new_seed')} `}</b>
+              {t('wallet_group_empty_state_text_two')}
+            </div>
+          </div>
+        )}
+        {multi.map((g, i) => (
+          <GroupTile
+            id={`wallet_group_${i}`}
+            title={settings.value.walletGroupNames[g.key] ?? `${t('wallet_group')} ${i + 1}`}
+            leading={<MIcon name="account_balance_wallet_outlined" size={28} />}
+            wallets={g.wallets}
+            selected={sel.group === g.key}
+            onSelect={() => setSel({ group: g.key })}
+          />
+        ))}
+        {single.map((w) => (
+          <GroupTile id={`wallet_group_single_${w.id}`} title={w.name} leading={<Img src={walletCurrency(w.type).iconPath ?? undefined} size={32} />} selected={sel.wallet === w.id} onSelect={() => setSel({ wallet: w.id })} />
+        ))}
+      </div>
+    </Page>
+  );
+}
+
+/** WalletGroupExistingSeedDescriptionPage: the wallet shares a recovery phrase already written down */
+function WalletGroupExistingSeedPage({ args }: { args: { walletId: string } }) {
+  return (
+    <Page
+      title={t('wallet_group')}
+      legacy
+      id="wallet_group_existing_seed_page"
+      footer={
+        <div class="rowx" style={{ gap: '16px' }}>
+          <div class="grow"><Button secondary style={{ color: 'var(--on-secondary-container)' }} id="wallet_group_existing_seed_description_page_verify_seed_button_key" onClick={() => nav.push(Routes.preSeedPage, { walletId: args.walletId })}>{t('verify_phrase')}</Button></div>
+          <div class="grow"><Button id="wallet_group_existing_seed_description_page_open_wallet_button_key" onClick={() => nav.reset(Routes.dashboard)}>{t('open_wallet')}</Button></div>
+        </div>
+      }
+    >
+      <div class="col" style={{ alignItems: 'center', paddingTop: '24px' }}>
+        {heroImg('wallet_group_confirmed')}
+        <div style={{ height: '32px' }} />
+        <div class="center" style={{ fontSize: '16px', lineHeight: 1.5, color: 'var(--on-surface-variant)' }} id="wallet_group_existing_seed_text">
+          {t('wallet_group_description_existing_seed')}
+          <br />
+          <br />
+          {t('wallet_group_description_open_wallet')}
+          <br />
+          <br />
+          {t('wallet_group_description_view_seed')}
+          <br />
+          <b style={{ fontWeight: 800 }}>{t('seed_display_path')}</b>
+        </div>
+      </div>
+    </Page>
+  );
+}
+
 registerRoute(Routes.newWalletType, NewWalletTypePage);
 registerRoute(Routes.newWalletFromWelcome, NewWalletTypePage);
 registerRoute(Routes.restoreWalletType, (p) => <NewWalletTypePage args={{ ...(p.args ?? {}), restore: true }} />);
@@ -550,3 +708,6 @@ registerRoute(Routes.seed, WalletSeedPage);
 registerRoute(Routes.walletSeedVerificationPage, SeedVerificationPage);
 
 export { coinModule };
+registerRoute(Routes.walletGroupDescription, WalletGroupDescriptionPage);
+registerRoute(Routes.walletGroupsDisplayPage, WalletGroupsDisplayPage);
+registerRoute(Routes.walletGroupExistingSeedDescriptionPage, WalletGroupExistingSeedPage);

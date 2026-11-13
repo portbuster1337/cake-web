@@ -1,4 +1,5 @@
 // Shared browser launcher for the E2E scripts: headless Chrome or Firefox.
+import fs from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
 export const BROWSERS = {
@@ -25,6 +26,14 @@ export async function launch({ browser = 'chrome', profile, width = 1100, height
     defaultViewport: { width, height },
     extraPrefsFirefox: firefox ? { 'media.peerconnection.enabled': true, 'media.navigator.permission.disabled': true, ...firefoxPrefs } : undefined,
   });
+  // a throwaway profile under /tmp/opencode goes with the browser (KEEP_PROFILE=1 keeps it)
+  if (profile?.startsWith('/tmp/opencode/cw-') && !process.env.KEEP_PROFILE) {
+    const close = b.close.bind(b);
+    b.close = async () => {
+      await close();
+      fs.rmSync(profile, { recursive: true, force: true });
+    };
+  }
   return b;
 }
 

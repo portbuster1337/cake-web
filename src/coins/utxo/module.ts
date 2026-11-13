@@ -102,6 +102,8 @@ function makeModule(type: WalletType): CoinModule {
       const secrets: WalletSecrets = { engineData: { xpub } };
       const info = baseInfo(type, o.name, true, 'bip39', defaultDerivationPath(coin, 'bip39'));
       info.isWatchOnly = true;
+      // WalletCreationVM: a restored wallet without a seed
+      info.isNonSeedWallet = true;
       info.address = await firstAddress(coin, secrets, 'bip39', info.derivationInfo!.derivationPath!);
       return { info, secrets };
     },
