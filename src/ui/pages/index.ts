@@ -12,6 +12,7 @@ import './tokens.tsx';
 import './nano.tsx';
 import './sign.tsx';
 import './bumpfee.tsx';
+import './backup.tsx';
 import './settings/main.tsx';
 import './settings/connections.tsx';
 import './settings/pages.tsx';
