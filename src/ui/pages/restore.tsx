@@ -8,7 +8,8 @@ import { showAlert, showSheet } from '../components/overlays.tsx';
 import { registerRoute, Routes } from '../routes.ts';
 import { nav } from '../nav.ts';
 import { currentPalette } from '../theme/themes.ts';
-import { coinModule, type DerivationCandidate } from '../../coins/module.ts';
+import { coinModule, isCoinSupported, type DerivationCandidate } from '../../coins/module.ts';
+import { extractWalletType, parseRestoreQr, type RestoreQr } from '../../app/restoreQr.ts';
 import { generateName } from '../../core/names.ts';
 import { restoreWalletFromSeed, restoreWalletFromKeys, openWallet, walletNameTaken } from '../../app/app.ts';
 import { WALLET_TYPE_NAME, type WalletType, isEvm } from '../../coins/types.ts';
@@ -37,9 +38,9 @@ function RestoreOptionsPage({ args }: { args?: boolean }) {
     <Page title={t('restore_restore_wallet')} legacy id="restore_options_page">
       <div class="col gap12" style={{ paddingTop: '24px' }}>
         <OptionTile id="restore_options_from_seeds_or_keys_button_key" image={`assets/images/restore_hot_wallet${sfx}.png`} title={t('restore_title_from_seed_keys')} description={t('restore_description_from_seed_keys')} onClick={() => nav.push(Routes.restoreWalletType)} />
-        <OptionTile image={`assets/images/restore_hw${sfx}.png`} title={t('restore_title_from_hardware_wallet').trim()} description={t('restore_description_from_hardware_wallet')} onClick={() => nav.push(Routes.restoreWalletFromHardwareWallet)} />
+        <OptionTile id="restore_options_from_hardware_wallet_button_key" image={`assets/images/restore_hw${sfx}.png`} title={t('restore_title_from_hardware_wallet').trim()} description={t('restore_description_from_hardware_wallet')} onClick={() => nav.push(Routes.restoreWalletFromHardwareWallet)} />
         {isNewInstall && <OptionTile id="restore_options_from_backup_button_key" image={`assets/images/restore_backup${sfx}.png`} title={t('restore_title_from_backup')} description={t('restore_description_from_backup')} onClick={() => nav.push(Routes.restoreFromBackup)} />}
-        <OptionTile image={`assets/images/restore_qr${sfx}.png`} title={t('scan_qr_code')} description={t('cold_or_recover_wallet')} onClick={async () => {
+        <OptionTile id="restore_options_from_qr_button_key" image={`assets/images/restore_qr${sfx}.png`} title={t('scan_qr_code')} description={t('cold_or_recover_wallet')} onClick={async () => {
           const code = await nav.pushForResult<string>('/scan', { mode: 'restore' });
           if (code) await restoreFromQr(code);
         }} />
@@ -48,33 +49,26 @@ function RestoreOptionsPage({ args }: { args?: boolean }) {
   );
 }
 
-/** wallet_restore_from_qr_code.dart */
-const QR_TYPES: [string, WalletType][] = [
-  ['monero-wallet', 'monero'], ['monero_wallet', 'monero'], ['monero', 'monero'], ['bitcoin-wallet', 'bitcoin'], ['bitcoin_wallet', 'bitcoin'], ['bitcoin', 'bitcoin'],
-  ['litecoin-wallet', 'litecoin'], ['litecoin_wallet', 'litecoin'], ['litecoin', 'litecoin'], ['ethereum-wallet', 'ethereum'], ['polygon-wallet', 'polygon'], ['base-wallet', 'base'],
-  ['arbitrum-wallet', 'arbitrum'], ['bsc-wallet', 'bsc'], ['robinhood-wallet', 'robinhood'], ['nano-wallet', 'nano'], ['nano_wallet', 'nano'], ['bitcoincash-wallet', 'bitcoinCash'],
-  ['bitcoincash_wallet', 'bitcoinCash'], ['bitcoincash', 'bitcoinCash'], ['solana-wallet', 'solana'], ['tron-wallet', 'tron'], ['tron_wallet', 'tron'], ['tron', 'tron'],
-  ['decred-wallet', 'decred'], ['decred_wallet', 'decred'], ['decred', 'decred'], ['dogecoin-wallet', 'dogecoin'], ['dogecoin_wallet', 'dogecoin'], ['dogecoin', 'dogecoin'],
-  ['zcash-wallet', 'zcash'], ['zcash_wallet', 'zcash'], ['zcash', 'zcash'],
-];
-
+/** WalletRestoreFromQRCode.scanQRCodeForRestoring, then the restore page filled in (errors as Cake shows them) */
 async function restoreFromQr(raw: string) {
-  const code = raw.replace(/^\[[^\]]*\]/, '').trim();
-  const lower = code.toLowerCase();
-  let type = QR_TYPES.filter(([k]) => lower.includes(k)).sort((a, b) => b[0].length - a[0].length)[0]?.[1];
-  if (!type && /^(xpub|zpub)/i.test(code)) type = 'bitcoin';
+  const fail = (message: string) => showAlert({ title: t('error'), content: message, right: t('ok') });
+  const code = raw.startsWith('[') ? raw.slice(raw.indexOf(']') + 1) : raw;
+  if (!code) return fail('Unexpected scan QR code value: value is empty');
+  let type = extractWalletType(code);
+  const picked = !type;
   if (!type) {
-    await showAlert({ content: "Can't determine wallet type, please pick it manually" });
-    nav.push(Routes.restoreWalletType);
-    return;
+    await fail("Can't determine wallet type, please pick it manually");
+    type = (await nav.pushForResult<WalletType>(Routes.restoreWalletTypeFromQR)) ?? null;
+    if (!type) return fail('Failed to determine wallet type.');
   }
-  const q = new URLSearchParams(code.slice(code.indexOf(':') + 1).replace(/^\?/, '').replace('?', '&'));
-  const seed = q.get('mnemonic_seed') ?? q.get('seed') ?? q.get('hexSeed') ?? '';
-  const keysMode = !!(q.get('spend_key') || q.get('view_key') || q.get('private_key') || q.get('xpub') || /^(xpub|zpub)/i.test(code));
-  nav.push(Routes.restoreWallet, {
-    walletType: type,
-    prefill: { mode: keysMode ? 'keys' : 'seed', seed, passphrase: q.get('passphrase') ?? '', name: q.get('label') ?? '', address: q.get('address') ?? '', spendKey: q.get('spend_key') ?? '', viewKey: q.get('view_key') ?? q.get('xpub') ?? (/^(xpub|zpub)/i.test(code) ? code : ''), privateKey: q.get('private_key') ?? '', height: q.get('height') ?? '' },
-  });
+  let r: RestoreQr;
+  try {
+    r = parseRestoreQr(code, type, picked);
+  } catch (e) {
+    return fail((e as Error).message);
+  }
+  if (!isCoinSupported(r.type)) return fail('This wallet cannot be used in this app.');
+  nav.push(Routes.restoreWallet, { walletType: r.type, prefill: { mode: r.mode, seed: r.seed, passphrase: r.passphrase, name: r.name, address: r.address, spendKey: r.spendKey, viewKey: r.viewKey, privateKey: r.privateKey, height: r.height } });
 }
 
 const HEIGHT_TYPES: WalletType[] = ['monero', 'wownero', 'zcash', 'zano'];

@@ -768,6 +768,8 @@ function WalletGroupExistingSeedPage({ args }: { args: { walletId: string } }) {
 registerRoute(Routes.newWalletType, NewWalletTypePage);
 registerRoute(Routes.newWalletFromWelcome, NewWalletTypePage);
 registerRoute(Routes.restoreWalletType, (p) => <NewWalletTypePage args={{ ...(p.args ?? {}), restore: true }} />);
+// restoreWalletTypeFromQR: the type of a scanned wallet that the code does not name
+registerRoute(Routes.restoreWalletTypeFromQR, () => <NewWalletTypePage args={{ restore: true, onSelected: (type) => nav.pop(type) }} />);
 registerRoute(Routes.newWallet, NewWalletPage);
 registerRoute(Routes.advancedPrivacySettings, AdvancedPrivacySettingsPage);
 registerRoute(Routes.preSeedPage, PreSeedPage);
