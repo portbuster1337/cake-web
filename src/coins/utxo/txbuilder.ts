@@ -2,9 +2,10 @@
 // BCH with its own SIGHASH_FORKID signer, see bch.ts), and Cake Wallet's size
 // estimates (cw_bitcoin electrum_wallet.dart estimatedInputSize/OutputSize).
 
-import { Transaction, p2wpkh, p2sh, OutScript } from '@scure/btc-signer';
+import { Address, Transaction, p2wpkh, p2sh, OutScript } from '@scure/btc-signer';
 import { hex } from '@scure/base';
 import { addressToScript, signerNet, type AddressType, type UtxoNetwork } from './networks.ts';
+import { isSilentAddress } from './silent.ts';
 import { buildBchTransaction } from './bch.ts';
 
 export interface SpendInput {
@@ -74,6 +75,8 @@ export function genericTxSize(inputs: number, outputs: number): number {
 }
 
 export function outputTypeOf(net: UtxoNetwork, address: string): AddressType {
+  // a silent payment becomes a P2TR output
+  if (net.coin === 'btc' && isSilentAddress(address)) return 'silent_payments';
   try {
     const s = OutScript.decode(addressToScript(net, address));
     switch (s.type) {
@@ -148,6 +151,11 @@ export function buildTransaction(net: UtxoNetwork, inputs: SpendInput[], outputs
   ins.forEach((i, idx) => tx.signIdx(i.privkey, idx));
   tx.finalize();
   return { hex: tx.hex, txid: tx.id, vsize: tx.vsize, fee, inputs: ins, outputs: outs };
+}
+
+/** the P2TR address of an output key as it is (no BIP-341 tweak: a silent payment output key) */
+export function taprootAddress(net: UtxoNetwork, xonly: Uint8Array): string {
+  return Address(signerNet(net)).encode({ type: 'tr', pubkey: xonly });
 }
 
 /** p2sh-p2wpkh redeem script helper (for address checks) */

@@ -81,6 +81,7 @@ export const Routes = {
   cakePayVerifyOtpPage: '/cake_pay_verify_otp_page',
   webViewPage: '/web_view_page',
   silentPaymentsSettings: '/silent_payments_settings',
+  silentPaymentsLogs: '/silent_payments_logs',
   mwebSettings: '/mweb_settings',
   connectionSync: '/connection_sync_page',
   securityBackupPage: '/security_and_backup_page',

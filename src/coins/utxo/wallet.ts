@@ -15,7 +15,8 @@ import { engineContext, type EngineContext } from '../../core/engine.ts';
 import { makeIndexer, type ChainTx, type Indexer } from './indexer.ts';
 import { KeyTree, addressTypesFor, LEGACY_CHAIN_TYPES, chainKey, type ChainId, type DerivationType } from './hd.ts';
 import { NETWORKS, isValidAddress, type AddressType, type UtxoCoin, type UtxoNetwork } from './networks.ts';
-import { buildTransaction, estimateVsize, genericTxSize, inputVbytes, outputTypeOf, type SpendInput, type SpendOutput } from './txbuilder.ts';
+import { buildTransaction, estimateVsize, genericTxSize, inputVbytes, outputTypeOf, outputVbytes, taprootAddress, type SpendInput, type SpendOutput } from './txbuilder.ts';
+import { decodeSilentAddress, isSilentAddress, silentPaymentOutputs } from './silent.ts';
 import { getJson } from '../../net/http.ts';
 import { bip39Seed } from '../seeds/bip39.ts';
 import { electrumMnemonicToSeed } from '../seeds/electrum.ts';
@@ -659,7 +660,7 @@ export class UtxoWallet extends WalletBase {
   }
 
   validateAddress(address: string): boolean {
-    return isValidAddress(this.net, address);
+    return isValidAddress(this.net, address) || (this.coin === 'btc' && isSilentAddress(address));
   }
 
   /** ElectrumWallet.createTransaction (+ estimateSendAllTx / estimateTxForAmount / _createUTXOS) */
@@ -703,7 +704,7 @@ export class UtxoWallet extends WalletBase {
         if (target === maxSpendable) return this.createTransaction({ ...c, outputs: [{ ...outputs[0], sendAll: true }] });
       }
       // branch and bound for a changeless input set
-      const outVb = dests.reduce((s, d) => s + (outputTypeOf(this.net, d.address) === 'p2pkh' ? 34 : outputTypeOf(this.net, d.address) === 'p2tr' || outputTypeOf(this.net, d.address) === 'p2wsh' ? 43 : outputTypeOf(this.net, d.address) === 'p2sh' ? 32 : 31), 0);
+      const outVb = dests.reduce((s, d) => s + outputVbytes(outputTypeOf(this.net, d.address)), 0);
       const bnb = changeless(coins.map((u) => ({ value: u.value, cost: BigInt(inputVbytes(u.rec.type) * rate) })), target + BigInt((10 + outVb) * rate), this.#dust());
       let count = bnb ? bnb.length : 0;
       if (bnb) {
@@ -762,6 +763,16 @@ export class UtxoWallet extends WalletBase {
         return si;
       }),
     );
+    // silent payments: each sp1 output becomes the P2TR key derived from the chosen inputs (BIP-352)
+    const spIdx = finalOutputs!.map((o, i) => (!o.isChange && this.coin === 'btc' && isSilentAddress(o.address) ? i : -1)).filter((i) => i >= 0);
+    if (spIdx.length) {
+      for (const i of spIdx) if (finalOutputs![i].value <= 1000n) throw new Error(t('error_dust') === 'error_dust' ? 'The amount is too small (dust)' : t('error_dust'));
+      const keys = silentPaymentOutputs(
+        spendInputs.map((i) => ({ txid: i.txid, vout: i.vout, privkey: i.privkey, taproot: i.type === 'p2tr', eligible: i.type === 'p2wpkh' || i.type === 'p2pkh' || i.type === 'p2sh' || i.type === 'p2tr' })),
+        spIdx.map((i) => decodeSilentAddress(finalOutputs![i].address)!),
+      );
+      spIdx.forEach((oi, k) => (finalOutputs![oi] = { ...finalOutputs![oi], address: taprootAddress(this.net, keys[k]) }));
+    }
     const built = buildTransaction(this.net, spendInputs, finalOutputs!, { rbf: this.coin === 'btc' && !spendsUnconfirmed, locktime });
     const sentAmount = finalOutputs!.filter((o) => !o.isChange).reduce((s, o) => s + o.value, 0n);
     return this.#pending(built.hex, built.txid, sentAmount, built.fee, built.inputs, built.outputs, rate);

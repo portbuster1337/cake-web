@@ -17,8 +17,19 @@ the other way round.
 - **Encrypted at rest.** The PIN unwraps a random data key (PBKDF2-SHA256 → AES-256-GCM) that
   encrypts settings, wallets, seeds, history and contacts in IndexedDB.
 
-Work in progress — see [PARITY.md](PARITY.md) for the feature-by-feature status against the
-official app.
+## What works
+
+Monero, Bitcoin, Litecoin, Bitcoin Cash, Dogecoin, Ethereum, Polygon, Base, Arbitrum, BNB Smart
+Chain, Robinhood Chain, Solana, Tron and Nano wallets — create, restore, send, receive, tokens,
+accounts, coin control, fee bumping, message signing — plus Swap, Buy/Sell, Cake Pay gift cards,
+dEuro Savings, backups in Cake's format and the rest of Cake's settings and dashboard. See
+[PARITY.md](PARITY.md) for the feature-by-feature status against the official app, including what
+is missing (hardware wallets, WalletConnect, Lightning, MWEB, Zcash, Decred).
+
+Services that the official app reaches with Cake Labs' own API keys are used keyless wherever the
+service allows it (SwapTrade, XOSwap, NEAR Intents and Jupiter swaps, DFX.swiss, Cake Pay); the
+others turn on once you add your own key under Settings → Connection and sync → API keys. The
+client takes no fee of its own.
 
 ## Build
 
@@ -26,7 +37,8 @@ official app.
 npm install
 npm run build          # static site in dist/
 npm run preview        # http://127.0.0.1:8787
-npm test               # unit tests
+npm test               # unit tests (node --test)
+node test/e2e/swap-flow.mjs   # end-to-end runs in headless Chrome, over Tor (see test/e2e/*)
 npm run typecheck
 scripts/publish-pages.sh   # build and publish to Codeberg Pages
 ```
