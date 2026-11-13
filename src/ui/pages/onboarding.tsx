@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
+import { vault } from '../../core/vault.ts';
 import { nav } from '../nav.ts';
 import { registerRoute, Routes } from '../routes.ts';
 import { Button, Img, Page } from '../components/core.tsx';
@@ -106,6 +107,12 @@ function SetupPinCodePage({ args }: { args?: { onSuccess?: () => void; isDuress?
         busy={busy}
         onFull={async (pin, api) => {
           if (!first) {
+            // setup_pin_code_view_model.dart: the duress PIN must differ from the regular one
+            if (args?.isDuress && (await vault.verify(pin))) {
+              await showAlert({ title, content: 'Invalid argument(s): Duress PIN cannot be the same as regular PIN', right: t('ok') });
+              api.clear();
+              return;
+            }
             setFirst(pin);
             api.clear();
             return;

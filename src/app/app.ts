@@ -111,6 +111,10 @@ export async function unlock(pin: string): Promise<UnlockOutcome> {
   const f = await lockoutState();
   if (f.bannedUntil > Date.now()) return { ok: false, bannedUntil: f.bannedUntil };
   const r = await vault.unlock(pin);
+  if (r === 'duress') {
+    await duressWipe();
+    return { ok: false };
+  }
   if (r === 'wrong') {
     const count = f.count + 1;
     const ban = banDuration(count);
@@ -127,11 +131,31 @@ export async function unlock(pin: string): Promise<UnlockOutcome> {
   const id = settings.value.currentWalletId ?? walletInfos.value[0]?.id;
   if (id) void openWallet(id).catch((e) => (walletError.value = (e as Error).message));
   startIdleTimer();
-  return { ok: true, duress: r === 'duress' };
+  return { ok: true, duress: false };
 }
 
+/** in-app PIN checks; the duress PIN works there too */
 export async function verifyPin(pin: string): Promise<boolean> {
-  return vault.verify(pin);
+  if (await vault.verify(pin)) return true;
+  if (await vault.isDuressPin(pin)) await duressWipe();
+  return false;
+}
+
+/**
+ * AuthService._handleDuressLogin: the open wallet is closed, every wallet and every secret is erased, and
+ * the app starts over at the welcome page. Cake keeps the address book, notes, nodes and settings; here
+ * they are encrypted with the key of the erased PIN, so they go too.
+ */
+export async function duressWipe(): Promise<void> {
+  const w = currentWallet.value;
+  currentWallet.value = null;
+  if (w) await w.close().catch(() => {});
+  walletInfos.value = [];
+  router.online = false;
+  router.newIdentity();
+  await vault.wipe();
+  resetSettingsLoaded();
+  phase.value = 'welcome';
 }
 
 export async function lock(): Promise<void> {

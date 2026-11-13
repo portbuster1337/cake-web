@@ -114,18 +114,15 @@ class VaultImpl {
       this.#cache.clear();
       return 'ok';
     }
-    const d = await db.get<WrapRecord>('kv', DURESS_WRAP_KEY);
-    if (d) {
-      const draw = await unwrap(pin, d);
-      if (draw) {
-        this.#dekRaw = draw;
-        this.#dek = await importDek(draw);
-        this.#ns = 'duress:';
-        this.#cache.clear();
-        return 'duress';
-      }
-    }
+    // the duress PIN unlocks nothing: it only tells the app to erase the wallets
+    if (await this.isDuressPin(pin)) return 'duress';
     return 'wrong';
+  }
+
+  /** the duress PIN (its wrap holds a throw-away key, so it can't decrypt anything) */
+  async isDuressPin(pin: string): Promise<boolean> {
+    const d = await db.get<WrapRecord>('kv', DURESS_WRAP_KEY);
+    return !!d && !!(await unwrap(pin, d));
   }
 
   /** Check a PIN without changing state (re-authentication). */
