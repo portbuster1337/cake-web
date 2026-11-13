@@ -120,6 +120,7 @@ export const Routes = {
   walletSeedVerificationPage: '/wallet_seed_verification_page',
   exchangeTradeExternalSendPage: '/exchange_trade_external_send_page',
   dEuroSavings: '/integration/dEuro/savings',
+  readThirdPartyDisclaimer: '/disclaimer/third_party',
   aboutPage: '/about_page',
   torSettings: '/tor_settings',
   apiKeysPage: '/api_keys',

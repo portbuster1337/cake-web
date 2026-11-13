@@ -514,6 +514,52 @@ export class EvmWallet extends WalletBase implements TokenWallet {
   }
 
   /** eth_sendRawTransaction, first through Blink (MEV protection) on Ethereum/Base when its key is set */
+  /** eth_call: a contract's view, the raw result */
+  async callContract(to: string, data: Uint8Array): Promise<string> {
+    return this.#rpc<string>('eth_call', [{ from: this.address, to, data: hex(data) }, 'latest'], 'contract call');
+  }
+
+  /**
+   * A call into a contract (an approval, a deposit…): the gas estimated by the node, the fee checked against the coin
+   * balance, signed. `amount` is only what the confirmation shows (in `amountDecimals`).
+   */
+  async createContractCall(to: string, data: Uint8Array, opts: { priority?: string; amount?: bigint; amountDecimals?: number } = {}): Promise<PendingTransaction> {
+    const priority = this.#prio(opts.priority ?? this.defaultPriority());
+    const g = await this.#gasParams(priority, { to, value: 0n, data });
+    const fee = g.gas * g.maxFeePerGas;
+    const nativeAvail = this.balances.value[this.currency.key]?.available ?? 0n;
+    if (fee > nativeAvail) throw new Error(`Transaction failed due to insufficient ${this.currency.title} balance to cover the fees.`);
+    const nonce = fromQuantity(await this.#rpc<string>('eth_getTransactionCount', [this.address, 'pending'], 'nonce'));
+    const { raw, hash } = signTransaction(
+      {
+        chainId: this.chain.chainId,
+        nonce,
+        to,
+        value: 0n,
+        data,
+        gasLimit: g.gas,
+        ...(this.chain.eip1559 ? { maxFeePerGas: g.maxFeePerGas, maxPriorityFeePerGas: TIP[priority] * GWEI } : { gasPrice: g.maxFeePerGas }),
+      },
+      this.#priv,
+    );
+    const amount = opts.amount ?? 0n;
+    return {
+      id: hash,
+      amount,
+      fee,
+      hex: hex(raw),
+      amountFormatted: formatFixed(amount, opts.amountDecimals ?? 18),
+      feeFormatted: formatFixed(fee, 18, { fractionDigits: 10 }),
+      commit: async () => {
+        await this.#broadcast(hex(raw));
+        this.#txs.set(hash, { id: hash, currency: this.currency.key, direction: 'outgoing', amount: 0n, fee, date: Date.now(), confirmations: 0, isPending: true, from: this.address, to });
+        this.#publishTxs();
+        await this.save();
+        setTimeout(() => void this.#sync(false), 4_000);
+      },
+    };
+  }
+
   async #broadcast(raw: string): Promise<void> {
     const s = this.ctx.settings() as any;
     const blink = (s.apiKeys?.blink ?? '').trim();

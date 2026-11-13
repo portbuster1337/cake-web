@@ -216,9 +216,31 @@ export const SELECTOR = {
   decimals: '313ce567',
 } as const;
 
-export function encodeCall(selector: string, args: ({ address: string } | { uint: bigint })[] = []): Uint8Array {
-  const parts = args.map((a) => ('address' in a ? pad32(unhex(a.address)) : pad32(bigBytes(a.uint))));
+export type AbiArg = { address: string } | { uint: bigint } | { bool: boolean } | { bytes32: string };
+
+/** a call of static arguments (address, uintN, bool, bytes32), each one 32-byte word */
+export function encodeCall(selector: string, args: AbiArg[] = []): Uint8Array {
+  const parts = args.map((a) => {
+    if ('address' in a) return pad32(unhex(a.address));
+    if ('uint' in a) return pad32(bigBytes(a.uint));
+    if ('bool' in a) return pad32(Uint8Array.of(a.bool ? 1 : 0));
+    const b = unhex(a.bytes32);
+    if (b.length !== 32) throw new Error('bytes32 must be 32 bytes');
+    return b;
+  });
   return concatBytes(hexToBytes(selector), ...parts);
+}
+
+/** the 4-byte selector of a function signature, e.g. "save(uint192,bool)" */
+export function selectorOf(signature: string): string {
+  return bytesToHex(keccak_256(new TextEncoder().encode(signature)).subarray(0, 4));
+}
+
+/** the n-th 32-byte word of a call result, as an unsigned integer */
+export function decodeWord(result: string, n = 0): bigint {
+  const b = unhex(result || '0x');
+  if (b.length < 32 * (n + 1)) return 0n;
+  return BigInt(hex(b.subarray(32 * n, 32 * n + 32)));
 }
 
 export const erc20Transfer = (to: string, amount: bigint) => encodeCall(SELECTOR.transfer, [{ address: to }, { uint: amount }]);

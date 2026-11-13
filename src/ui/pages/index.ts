@@ -18,6 +18,7 @@ import './swap/options.tsx';
 import './swap/trade.tsx';
 import './buy/buy.tsx';
 import './cakepay/cakepay.tsx';
+import './deuro/savings.tsx';
 import './settings/main.tsx';
 import './settings/connections.tsx';
 import './settings/pages.tsx';
