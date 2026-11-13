@@ -15,7 +15,7 @@ import { isSynced, syncProgress, syncStatusTitle, type WalletBase } from '../../
 import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl } from '../../../coins/types.ts';
-import { BalanceCard, CardChip, cardStyleKey, designFromStyle } from './cards.tsx';
+import { BalanceCard, CardChip, cardStyleKey, designFromStyle, storedCardStyle } from './cards.tsx';
 import { HistoryList, historyItems, getTxNotes, txAsset, orderFilter, ordersForWallet, tradesForWallet, tradeFilter, tradeFilterCount, displayAllTrades, toggleAllTrades, resetTradeFilter, TRADE_FILTER_PROVIDERS, type HistoryItem } from './history.tsx';
 import { nav } from '../../nav.ts';
 import { Routes } from '../../routes.ts';
@@ -162,7 +162,7 @@ function WalletHome({ w }: { w: WalletBase }) {
     const fiat = fiatValue(Number(formatFixed(shown, cur.decimals)), api);
     fiatStr = s.fiatApiMode === 'disabled' ? undefined : `${s.fiatCurrency} ${formatFiatAmount(fiat ?? 0)}`;
   }
-  const design = designFromStyle(s.cardDesigns[cardStyleKey(w)], cur.key);
+  const design = designFromStyle(storedCardStyle(s.cardDesigns, cardStyleKey(w)), cur.key);
   const txs = w.transactions.value;
   const pending = ADDITIONAL_BALANCE.has(w.type) ? bal.pending ?? 0n : 0n;
   // shouldShowSeedBackupReminder: a new recovery phrase not backed up yet, and some balance (any asset)
@@ -180,14 +180,14 @@ function WalletHome({ w }: { w: WalletBase }) {
           <div class="col" style={{ alignItems: 'center', padding: '0 6%' }}>
             <BalanceCard
               design={design}
-              label={combined ? t('wallet_balance') : w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label ?? t('balance')}
+              label={combined ? t('wallet_balance') : (w.isMultiAccountsEnabled ? w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label : undefined) ?? t('balance')}
               labelDim={combined}
               amount={amountStr}
               asset={assetStr}
               fiat={fiatStr}
               hidden={hidden}
               onLongPress={toggleHidden}
-              onMenu={() => nav.push(Routes.cardCustomizer)}
+              onMenu={() => nav.push(Routes.cardCustomizer, w.isMultiAccountsEnabled ? { account: w.currentAccount.value } : undefined)}
               chips={!s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => void openBuySellSelector()} /> : undefined}
             />
             {hidden && s.hiddenBalanceToggles < 10 && <div class="muted" style={{ marginTop: '12px' }}>{t('long_press_show_balance')}</div>}

@@ -59,6 +59,9 @@ export class MoneroWallet extends WalletBase {
   get hasAccountsSupport(): boolean {
     return true;
   }
+  get hasNativeAccounts(): boolean {
+    return true;
+  }
   get hasMultipleOutputs(): boolean {
     return true;
   }

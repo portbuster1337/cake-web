@@ -25,6 +25,10 @@ import { t } from '../../core/i18n.ts';
 export const DEFAULT_RECEIVE = 22;
 export const DEFAULT_CHANGE = 17;
 export const GAP = 20;
+/** ElectrumWallet.maxProbAccounts: the accounts (0 included) the one-time discovery looks at */
+export const MAX_PROBE_ACCOUNTS = 3;
+/** WalletInfo.getAccounts: account 0's label (stored as it is, not translated) */
+export const PRIMARY_ACCOUNT_LABEL = 'Primary account';
 
 export interface AddrRecord {
   address: string;
@@ -98,6 +102,8 @@ export class UtxoWallet extends WalletBase {
   #syncing = false;
   #lastFull = 0;
   #feeAt = 0;
+  /** new accounts whose addresses are still to be looked up */
+  #accountScans = new Set<number>();
 
   constructor(info: WalletInfo, secrets: WalletSecrets) {
     super(info, secrets);
@@ -118,6 +124,13 @@ export class UtxoWallet extends WalletBase {
   }
   get derivationType(): DerivationType {
     return (this.info.derivationInfo?.derivationType as DerivationType) ?? 'bip39';
+  }
+  /**
+   * ElectrumWallet.hasAccountsSupport: Bitcoin wallets with a seed (not watch-only, hardware or Electrum
+   * derivation), whose other accounts m/84'/0'/N' can be derived
+   */
+  get hasAccountsSupport(): boolean {
+    return this.coin === 'btc' && !this.info.hardwareWalletType && !!this.tree?.standardChains;
   }
 
   async init(): Promise<void> {
@@ -140,15 +153,27 @@ export class UtxoWallet extends WalletBase {
       accountLabels: {},
     };
     this.#ensureInitialAddresses();
+    // the selected account (account 0 while multiple accounts are off)
+    const acc = this.info.currentAccountIndex ?? 0;
+    this.currentAccount.value = this.hasAccountsSupport && this.info.isMultiAccountsEnabled && this.#accountIndexes().includes(acc) ? acc : 0;
     this.#publish();
   }
 
   // ------------------------------------------------------------ chains --
 
+  /** the wallet's accounts: 0 and the ones added or discovered */
+  #accountIndexes(): number[] {
+    return [0, ...Object.keys(this.state?.accountLabels ?? {}).map(Number).filter((a) => a > 0)].sort((a, b) => a - b);
+  }
+
+  /** an account's chains (extra accounts: P2WPKH receive and change) */
+  #accountChains(account: number): ChainId[] {
+    return addressTypesFor(this.coin, account, !!this.info.hardwareWalletType).flatMap((type) => [false, true].map((change) => ({ type, account, change, legacy: false })));
+  }
+
   chains(): ChainId[] {
     const out: ChainId[] = [];
-    const accounts = [0, ...Object.keys(this.state?.accountLabels ?? {}).map(Number).filter((a) => a > 0)];
-    for (const account of accounts) {
+    for (const account of this.#accountIndexes()) {
       for (const type of addressTypesFor(this.coin, account, !!this.info.hardwareWalletType)) {
         for (const change of [false, true]) out.push({ type, account, change, legacy: false });
         // BIP39 BTC wallets also keep the saved-path chains for P2PKH/P2TR/P2SH (legacy derivation)
@@ -184,8 +209,9 @@ export class UtxoWallet extends WalletBase {
     }
   }
 
-  #mine(): Map<string, AddrRecord> {
-    return new Map(this.state.addresses.map((a) => [a.address, a]));
+  /** the wallet's addresses (or one account's) */
+  #mine(account?: number): Map<string, AddrRecord> {
+    return new Map(this.state.addresses.filter((a) => account === undefined || a.account === account).map((a) => [a.address, a]));
   }
 
   // ------------------------------------------------------------- network --
@@ -210,6 +236,8 @@ export class UtxoWallet extends WalletBase {
   async sync(full: boolean): Promise<void> {
     if (this.#syncing || this.#closed) return;
     this.#syncing = true;
+    let ok = false;
+    let probed = false;
     try {
       if (full || !this.state.scanned) this.syncStatus.value = { kind: 'synchronizing' };
       const tip = await this.indexer.tip();
@@ -226,25 +254,50 @@ export class UtxoWallet extends WalletBase {
       } else {
         await this.#refresh(false);
       }
+      // isInitialBitcoinAccountsSync: the other accounts are looked for once multiple accounts are on
+      if (this.#needsAccountProbe()) {
+        probed = true;
+        await this.#probeAccounts();
+      }
+      // setCurrentAccount: a new account's addresses may have been used elsewhere
+      for (const a of [...this.#accountScans]) {
+        await this.#scanChains(this.#accountChains(a));
+        this.#accountScans.delete(a);
+      }
       await this.updateFeeRates().catch(() => {});
       this.#publish();
       await this.save();
       this.syncStatus.value = { kind: 'synced' };
+      ok = true;
     } catch (e) {
       this.syncStatus.value = { kind: 'failed', error: (e as Error).message };
     } finally {
       this.#syncing = false;
+      // an account added (or multiple accounts turned on) while this sync ran is looked into right away;
+      // after a failure, at the next sync
+      if (ok && !this.#closed && (this.#accountScans.size || (!probed && this.#needsAccountProbe()))) void this.sync(false);
     }
   }
 
   /** Gap-limit discovery over every chain (first sync of a restored wallet). */
   async #discover(): Promise<void> {
-    for (const c of this.chains()) {
+    await this.#scanChains(this.chains());
+  }
+
+  /** gap-limit discovery over some chains, then the used addresses' histories; returns how many lookups failed */
+  async #scanChains(chains: ChainId[]): Promise<number> {
+    let failed = 0;
+    for (const c of chains) {
       let start = 0;
       for (let guard = 0; guard < 100; guard++) {
         const recs = this.#records(c).filter((r) => r.index >= start);
         if (!recs.length) break;
-        const sums = await pool(recs, 6, (r) => this.indexer.address(r.address).catch(() => null));
+        const sums = await pool(recs, 6, (r) =>
+          this.indexer.address(r.address).catch(() => {
+            failed++;
+            return null;
+          }),
+        );
         recs.forEach((r, i) => {
           const s = sums[i];
           if (s && s.txCount > 0) {
@@ -261,7 +314,38 @@ export class UtxoWallet extends WalletBase {
         } else break;
       }
     }
-    await this.#fetchHistories(this.state.addresses.filter((a) => a.used));
+    const keys = new Set(chains.map(chainKey));
+    const used = this.state.addresses.filter((a) => a.used && keys.has(chainKey(a)));
+    if (used.length) await this.#fetchHistories(used);
+    return failed;
+  }
+
+  /** isInitialBitcoinAccountsSync */
+  #needsAccountProbe(): boolean {
+    return this.hasAccountsSupport && !!this.info.isMultiAccountsEnabled && (this.info.accountDiscoveryLimit ?? 0) < MAX_PROBE_ACCOUNTS;
+  }
+
+  /**
+   * fetchBitcoinTransactionsForInitialRestore: accounts 1 and 2 (P2WPKH) are looked at; one with history is added
+   * as "Account N" (a named one keeps its name), and the first without history ends the search. Done once, unless
+   * the indexer could not be asked.
+   */
+  async #probeAccounts(): Promise<void> {
+    let failed = 0;
+    for (let account = 1; account < MAX_PROBE_ACCOUNTS; account++) {
+      const known = this.#accountIndexes().includes(account);
+      const chains = this.#accountChains(account);
+      for (const c of chains) if (!this.#records(c).length) this.#addAddresses(c, 0, c.change ? DEFAULT_CHANGE : DEFAULT_RECEIVE);
+      failed += await this.#scanChains(chains);
+      if (!this.state.addresses.some((a) => a.account === account && a.used)) {
+        if (!known) this.state.addresses = this.state.addresses.filter((a) => a.account !== account);
+        break;
+      }
+      if (!known) this.state.accountLabels[account] = `Account ${account}`;
+    }
+    if (failed) return;
+    this.info.accountDiscoveryLimit = MAX_PROBE_ACCOUNTS;
+    await this.ctx.saveInfo(this.info);
   }
 
   /** Refresh used addresses + the ones a payment may arrive at. */
@@ -415,8 +499,13 @@ export class UtxoWallet extends WalletBase {
   }
 
   #publish() {
-    const mine = this.#mine();
-    const utxos = this.computeUtxos();
+    const all = this.#mine();
+    // Bitcoin with accounts: the selected account's balance, coins and history (currentAccountBitcoinTransactions)
+    const perAccount = this.hasAccountsSupport;
+    const account = this.currentAccount.value;
+    const mine = perAccount ? this.#mine(account) : all;
+    const allUtxos = this.computeUtxos();
+    const utxos = perAccount ? allUtxos.filter((u) => mine.has(u.address)) : allUtxos;
     const frozen = new Set(this.state.frozen);
     let confirmed = 0n;
     let unconfirmed = 0n;
@@ -430,10 +519,24 @@ export class UtxoWallet extends WalletBase {
     this.balances.value = { [this.currency.key]: bal };
     // per-address balances
     const byAddr = new Map<string, bigint>();
-    for (const u of utxos) byAddr.set(u.address, (byAddr.get(u.address) ?? 0n) + u.value);
+    for (const u of allUtxos) byAddr.set(u.address, (byAddr.get(u.address) ?? 0n) + u.value);
     for (const a of this.state.addresses) a.balance = (byAddr.get(a.address) ?? 0n).toString();
     this.unspents.value = utxos.map((u) => ({ ...u, frozen: frozen.has(outpoint(u)), note: this.state.notes[outpoint(u)] ?? '', confirmations: u.height > 0 ? this.state.tip - u.height + 1 : 0 }));
-    this.transactions.value = Object.values(this.state.txs).map((tx) => this.#toInfo(tx, mine)).sort((a, b) => (a.isPending === b.isPending ? b.date - a.date : a.isPending ? -1 : 1));
+    // a transaction shows in each account it touches, as seen from that account
+    const touches = (tx: ChainTx) => tx.inputs.some((i) => i.address && mine.has(i.address)) || tx.outputs.some((o) => o.address && mine.has(o.address));
+    this.transactions.value = Object.values(this.state.txs)
+      .filter((tx) => !perAccount || touches(tx))
+      .map((tx) => this.#toInfo(tx, mine))
+      .sort((a, b) => (a.isPending === b.isPending ? b.date - a.date : a.isPending ? -1 : 1));
+    // BitcoinAccountListViewModel: each account's label and balance (confirmed + unconfirmed, frozen coins too)
+    if (perAccount) {
+      const byAccount = new Map<number, bigint>();
+      for (const u of allUtxos) {
+        const a = all.get(u.address)!.account;
+        byAccount.set(a, (byAccount.get(a) ?? 0n) + u.value);
+      }
+      this.accounts.value = this.#accountIndexes().map((index) => ({ index, label: this.state.accountLabels[index] ?? (index === 0 ? PRIMARY_ACCOUNT_LABEL : `Account ${index}`), balance: byAccount.get(index) ?? 0n }));
+    } else if (this.accounts.value.length) this.accounts.value = [];
     this.addresses.value = this.state.addresses.map((a) => ({ address: a.address, label: a.label, index: a.index, account: a.account, type: a.type, isUsed: a.used, isChange: a.change, isHidden: a.hidden, balance: BigInt(a.balance), txCount: a.txCount }));
     this.receiveAddress.value = this.currentReceiveAddress();
   }
@@ -449,13 +552,16 @@ export class UtxoWallet extends WalletBase {
   receiveOptions() {
     const I = 'address-type-picker-icons/';
     if (this.coin === 'btc' && !this.info.hardwareWalletType) {
-      return [
+      const all = [
         { id: 'p2wpkh', title: 'Standard', description: 'Default (P2WPKH)', icon: `${I}btc_standard.svg`, common: true },
         { id: 'p2tr', title: 'Taproot', description: 'P2TR', icon: `${I}taproot.svg` },
         { id: 'p2wsh', title: 'Segwit', description: 'P2WSH', icon: `${I}segwit.svg` },
         { id: 'p2sh', title: 'Segwit-Compatible', description: 'P2SH', icon: `${I}segwit.svg` },
         { id: 'p2pkh', title: 'Legacy', description: 'P2PKH', icon: `${I}legacy.svg` },
       ];
+      // receiveOptionAvailable: extra accounts receive on P2WPKH only
+      const types = addressTypesFor(this.coin, this.currentAccount.value);
+      return all.filter((o) => types.includes(o.id as AddressType));
     }
     return [];
   }
@@ -473,7 +579,8 @@ export class UtxoWallet extends WalletBase {
   }
 
   setAddressPageType(type: AddressType): void {
-    this.state.addressPageType = type;
+    // ElectrumWalletAddresses.setAddressType: an extra account falls back to P2WPKH
+    this.state.addressPageType = addressTypesFor(this.coin, this.currentAccount.value, !!this.info.hardwareWalletType).includes(type) ? type : 'p2wpkh';
     this.receiveAddress.value = this.currentReceiveAddress();
     void this.save();
   }
@@ -554,6 +661,52 @@ export class UtxoWallet extends WalletBase {
     if (r) r.hidden = hidden;
     this.#publish();
     await this.save();
+  }
+
+  // ------------------------------------------------------------- accounts --
+
+  /** ElectrumWallet.setCurrentAccount: the account's balance, coins, history and addresses (a new one is looked up) */
+  async setAccount(index: number): Promise<void> {
+    if (!this.hasAccountsSupport || index < 0) return;
+    if (!this.#accountIndexes().includes(index)) this.#addAccount(index, `Account ${index}`);
+    this.currentAccount.value = index;
+    this.info.currentAccountIndex = index;
+    if (!addressTypesFor(this.coin, index).includes(this.state.addressPageType)) this.state.addressPageType = 'p2wpkh';
+    await this.ctx.saveInfo(this.info);
+    this.#publish();
+    await this.save();
+  }
+
+  /** BitcoinAccountEditOrCreateViewModel._createAccount: the next index, "Account N" without a name; then selected */
+  async addAccount(label: string): Promise<void> {
+    if (!this.hasAccountsSupport) return;
+    const next = Math.max(...this.#accountIndexes()) + 1;
+    this.#addAccount(next, label.trim() || `Account ${next}`);
+    await this.setAccount(next);
+  }
+
+  #addAccount(index: number, label: string): void {
+    this.state.accountLabels[index] = label;
+    this.#ensureInitialAddresses();
+    this.#accountScans.add(index);
+    if (this.indexer) void this.sync(false);
+  }
+
+  async renameAccount(index: number, label: string): Promise<void> {
+    if (!this.#accountIndexes().includes(index)) return;
+    this.state.accountLabels[index] = label.trim();
+    this.#publish();
+    await this.save();
+  }
+
+  /** DashboardViewModel.setMultiAccountsEnabled: off selects the primary account; on looks for the other accounts */
+  async setMultiAccountsEnabled(enabled: boolean): Promise<void> {
+    if (!this.canToggleMultiAccounts) return;
+    if (!enabled && this.currentAccount.value !== 0) await this.setAccount(0);
+    this.info.isMultiAccountsEnabled = enabled;
+    await this.ctx.saveInfo(this.info);
+    this.#publish();
+    if (enabled) void this.sync(true);
   }
 
   // --------------------------------------------------------- coin control --

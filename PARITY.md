@@ -16,7 +16,7 @@ exist.
 | Wallet | Status | Notes |
 | --- | --- | --- |
 | Monero | ✅ | Polyseed, 25-word legacy and BIP-39 seeds, keys; accounts (Cake's card deck: tap to bring a card in front, drag to reorder, archive and unarchive) and subaddresses, hidden addresses, sign/verify, rescan. monero-ts (WASM) with the node over Tor. |
-| Bitcoin | ✅ | BIP-39 and Electrum seeds, all of Cake's address types and derivations, accounts, coin control, RBF bump fee, sign/verify, silent payments **sending** (BIP-352). |
+| Bitcoin | ✅ | BIP-39 and Electrum seeds, all of Cake's address types and derivations, coin control, RBF bump fee, sign/verify, silent payments **sending** (BIP-352). Cake's optional accounts (the "Multiple Accounts" toggle on BIP-39 seed wallets): extra accounts m/84'/0'/N' receive on P2WPKH, each with its own balance, coins, history and addresses; turning it on looks for accounts 1 and 2 once, as Cake does. |
 | Litecoin | ✅ | No MWEB (it needs Cake's MWEB daemon). |
 | Bitcoin Cash, Dogecoin | ✅ | Dogecoin through Bitcore (other indexers refuse Tor exits). |
 | Ethereum, Polygon, Base, Arbitrum, BNB Smart Chain, Robinhood Chain | ✅ | Tokens (Cake's default lists, add/remove, spam heuristics), EIP-1559 fees, ENS. |

@@ -258,6 +258,12 @@ export interface WalletInfo {
   isWatchOnly?: boolean;
   /** network (mainnet/testnet) */
   network?: string;
+  /** Bitcoin: the "Multiple accounts" toggle (off for new wallets; Monero always has accounts) */
+  isMultiAccountsEnabled?: boolean;
+  /** Bitcoin: the selected account */
+  currentAccountIndex?: number;
+  /** Bitcoin: how many accounts the one-time discovery looked at (Cake: maxProbAccounts) */
+  accountDiscoveryLimit?: number;
 }
 
 /** Secrets kept only in the vault. */
@@ -320,6 +326,19 @@ export abstract class WalletBase {
   get hasAccountsSupport(): boolean {
     return false;
   }
+  /** accounts are part of the coin (Monero); Bitcoin's are optional */
+  get hasNativeAccounts(): boolean {
+    return false;
+  }
+  get canToggleMultiAccounts(): boolean {
+    return this.hasAccountsSupport && !this.hasNativeAccounts;
+  }
+  /** DashboardViewModel.isMultiAccountsEnabled */
+  get isMultiAccountsEnabled(): boolean {
+    return this.hasNativeAccounts || !!this.info.isMultiAccountsEnabled;
+  }
+  /** DashboardViewModel.setMultiAccountsEnabled (wallets that can toggle it) */
+  async setMultiAccountsEnabled(_enabled: boolean): Promise<void> {}
   get hasMultipleOutputs(): boolean {
     return false;
   }

@@ -179,7 +179,28 @@ export function designFromStyle(style: unknown, cur: string): CardDesign {
 
 /** the card style key: per wallet, and per account for wallets with accounts (accountIndex -1 otherwise) */
 export function cardStyleKey(w: { id: string; type: string; currentAccount: { value: number } }): string {
-  return `${w.id}:${w.type === 'monero' || w.type === 'wownero' ? w.currentAccount.value : -1}`;
+  return `${w.id}:${w.type === 'monero' || w.type === 'wownero' || w.type === 'bitcoin' ? w.currentAccount.value : -1}`;
+}
+
+/** a card's stored style; an account 0 without one takes the wallet card's (Bitcoin's, saved before it had accounts) */
+export function storedCardStyle(designs: Record<string, unknown>, key: string): unknown {
+  if (designs[key] !== undefined) return designs[key];
+  return key.endsWith(':0') ? designs[`${key.slice(0, -2)}:-1`] : undefined;
+}
+
+/**
+ * AccountEditOrCreateViewModel._saveRandomCardDesign: a new account gets the coin's own design in a gradient none
+ * of the wallet's stored card styles uses (any gradient once all are taken)
+ */
+export function newAccountStyle(designs: Record<string, unknown>, walletId: string, cur: string, random = Math.random): CardStyle {
+  const used = Object.entries(designs)
+    .filter(([k]) => k.startsWith(`${walletId}:`))
+    .map(([, v]) => designFromStyle(v, cur));
+  const all = CARD_GRADIENTS.map((g, i) => ({ g, i }));
+  const free = all.filter(({ g }) => !used.some((d) => sameGradient(d, g)));
+  const pool = free.length ? free : all;
+  const pick = pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+  return { gradientIndex: pick.i, useSpecialDesign: !!specialDesign(cur), iconStyleIndex: 0, isGradientOnly: false };
 }
 
 export const COMBOS: Record<Combo, { text: string; secondary: string; chip: string }> = {
@@ -193,6 +214,15 @@ export function CardArtwork({ design }: { design: CardDesign }) {
   if (design.type === 'svgFull') return <img src={asset(design.image)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', transition: 'opacity 300ms' }} draggable={false} />;
   if (design.type === 'svgIcon' && design.image !== BLANK) return <img src={asset(design.image)} alt="" style={{ position: 'absolute', right: '5%', bottom: '5%', width: '15%', aspectRatio: '1', objectFit: 'contain', opacity: design.preColored ? 1 : 0.33 }} draggable={false} />;
   return null;
+}
+
+/** a small BalanceCard showing only its design (BalanceCard with just a width and a radius) */
+export function MiniCard({ design, width = 50, radius = 5 }: { design: CardDesign; width?: number; radius?: number }) {
+  return (
+    <span style={{ position: 'relative', display: 'block', flex: 'none', width: `${width}px`, height: `${Math.round(width * 0.62)}px`, borderRadius: `${radius}px`, overflow: 'hidden', background: `linear-gradient(to bottom, ${design.from}, ${design.to})` }}>
+      <CardArtwork design={design} />
+    </span>
+  );
 }
 
 export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chips, onLongPress, onMenu, hidden, width = 380 }: { design: CardDesign; label: string; labelDim?: boolean; amount: string; asset: string; fiat?: string; chips?: ComponentChildren; onLongPress?: () => void; onMenu?: () => void; hidden?: boolean; width?: number }) {

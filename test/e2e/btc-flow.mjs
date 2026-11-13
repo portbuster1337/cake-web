@@ -77,9 +77,10 @@ try {
   step('restoring (derivation scan over Tor)…');
   const which = await page.waitForFunction(() => document.querySelector('#choose_derivation_page') ? 'chooser' : window.__cw.app.currentWallet.value?.name === 'Abandon' ? 'opened' : null, { timeout: 300000, polling: 1000 }).then((h) => h.jsonValue());
   if (which === 'chooser') {
-    const items = await page.$$eval('#choose_derivation_page button', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').slice(0, 120)));
+    // the derivations (the top bar's back button is not one)
+    const items = await page.$$eval('#choose_derivation_page .page-body button', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').slice(0, 120)));
     step(`derivations: ${JSON.stringify(items.slice(0, 5))}`);
-    await page.click('#choose_derivation_page button');
+    await page.click('#choose_derivation_page .page-body button');
   }
   const restored = await page.waitForFunction(() => {
     const w = window.__cw.app.currentWallet.value;

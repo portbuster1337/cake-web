@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../../core/i18n.ts';
-import { Button, Field, Icon, Img, MIcon, ModernButton, Page, TopBar } from '../../components/core.tsx';
+import { Button, Field, Icon, Img, MIcon, ModernButton, Page, ToggleRow, TopBar } from '../../components/core.tsx';
 import { confirmAlert, showAlert, showSheet } from '../../components/overlays.tsx';
 import { registerRoute, Routes } from '../../routes.ts';
 import { nav } from '../../nav.ts';
@@ -14,9 +14,15 @@ import { moveCard, resolveCardLayout, unhideCard, type CardLayout } from '../../
 import { generateName } from '../../../core/names.ts';
 import { formatFixed } from '../../../core/amount.ts';
 import { isSynced, type WalletBase } from '../../../core/wallet.ts';
-import { BalanceCard, designFromStyle } from './cards.tsx';
+import { BalanceCard, designFromStyle, newAccountStyle, storedCardStyle } from './cards.tsx';
 
 type AccountWallet = WalletBase & { setAccount?: (i: number) => Promise<void>; addAccount?: (label: string) => Promise<void> };
+
+/** an account's balance on its card: sats for Bitcoin when amounts are shown in satoshi */
+export function accountAmount(w: WalletBase, amount: bigint): { amount: string; asset: string } {
+  const sats = w.type === 'bitcoin' && settings.value.displayAmountsInSatoshi;
+  return sats ? { amount: amount.toString(), asset: 'sats' } : { amount: formatFixed(amount, w.currency.decimals, { fractionDigits: Math.min(w.currency.decimals, 8) }), asset: w.currency.title.toUpperCase() };
+}
 
 const SLIDES: { image: string; title: string; text: string }[] = [
   { image: 'accounts_overview.svg', title: 'accounts_education_organize_title', text: 'accounts_education_organize_description' },
@@ -76,6 +82,11 @@ export function saveAccountLayout(w: WalletBase, l: CardLayout): void {
   updateSettings((x) => ({ accountCards: { ...x.accountCards, [w.id]: { order: l.visible, hidden: l.hidden } } }));
 }
 
+const amountText = (w: WalletBase, amount: bigint) => {
+  const x = accountAmount(w, amount);
+  return `${x.amount} ${x.asset === 'sats' ? 'sats' : w.currency.title}`;
+};
+
 const accountLabel = (a: { index: number; label: string }) => `${a.index + 1}. ${a.label.trim() || t('unnamed_account')}`;
 
 function readyToManage(w: WalletBase): Promise<boolean> {
@@ -94,19 +105,31 @@ function WalletAccountsPage() {
     setDragState(d);
   };
   const cardsRef = useRef<HTMLDivElement>(null);
-  // _initialize: the active account in front; the education the first time
-  useEffect(() => {
-    if (!w) return;
-    const l = accountLayout(w);
-    const cur = w.currentAccount.value;
-    if (l.visible.includes(cur) && l.visible[l.visible.length - 1] !== cur) saveAccountLayout(w, { ...l, visible: [...l.visible.filter((a) => a !== cur), cur] });
-    if (!settings.peek().dismissedPromos?.education_accounts && w.accounts.value.length) {
-      void openAccountsEducation().then(() => updateSettings((x) => ({ dismissedPromos: { ...x.dismissedPromos, education_accounts: true } })));
+  const [multi, setMulti] = useState(() => !!w?.isMultiAccountsEnabled);
+  // _initialize: the active account in front; with accounts on, the education the first time
+  const initialize = (x: WalletBase) => {
+    const l = accountLayout(x);
+    const cur = x.currentAccount.value;
+    if (l.visible.includes(cur) && l.visible[l.visible.length - 1] !== cur) saveAccountLayout(x, { ...l, visible: [...l.visible.filter((a) => a !== cur), cur] });
+    if (x.isMultiAccountsEnabled && !settings.peek().dismissedPromos?.education_accounts && x.accounts.value.length) {
+      void openAccountsEducation().then(() => updateSettings((y) => ({ dismissedPromos: { ...y.dismissedPromos, education_accounts: true } })));
     }
+  };
+  useEffect(() => {
+    if (w) initialize(w);
   }, [w?.id]);
   if (!w) return null;
   const s = settings.value;
-  const layout = accountLayout(w);
+  // the selected account is the front card (an account found or added since keeps its place behind it)
+  const raw = accountLayout(w);
+  const cur = w.currentAccount.value;
+  const layout = raw.visible.includes(cur) ? { ...raw, visible: [...raw.visible.filter((a) => a !== cur), cur] } : raw;
+  /** ListItemToggle "Multiple Accounts": off selects the primary account */
+  const toggleMulti = async (v: boolean) => {
+    setMulti(v);
+    await w.setMultiAccountsEnabled(v);
+    initialize(w);
+  };
   const byIndex = new Map(w.accounts.value.map((a) => [a.index, a]));
   const visible = layout.visible.map((i) => byIndex.get(i)!).filter(Boolean);
   const hidden = s.balanceDisplayMode === 'hiddenBalance';
@@ -131,6 +154,8 @@ function WalletAccountsPage() {
     if (name === undefined || !w.addAccount) return;
     setBusy(true);
     try {
+      const next = w.accounts.value.reduce((m, a) => Math.max(m, a.index), -1) + 1;
+      updateSettings((x) => ({ cardDesigns: { ...x.cardDesigns, [`${w.id}:${next}`]: newAccountStyle(x.cardDesigns, w.id, w.currency.key) } }));
       await w.addAccount(name);
       // _showAddAccountModal: the newest account is selected (and comes in front)
       const newest = w.accounts.value.reduce((m, a) => Math.max(m, a.index), 0);
@@ -153,16 +178,25 @@ function WalletAccountsPage() {
         trailing={
           <span class="rowx" style={{ gap: '8px' }}>
             <ModernButton icon="question_mark" size={36} iconSize={19} label={t('accounts_help')} onClick={() => void openAccountsEducation()} />
-            <ModernButton svg="archived.svg" size={36} iconSize={19} id="archived_accounts_button" label={t('archived_accounts')} bg={layout.hidden.length ? 'var(--primary)' : undefined} color={layout.hidden.length ? 'var(--on-primary)' : undefined} onClick={() => nav.push(Routes.archivedAccounts)} />
+            {multi && <ModernButton svg="archived.svg" size={36} iconSize={19} id="archived_accounts_button" label={t('archived_accounts')} bg={layout.hidden.length ? 'var(--primary)' : undefined} color={layout.hidden.length ? 'var(--on-primary)' : undefined} onClick={() => nav.push(Routes.archivedAccounts)} />}
           </span>
         }
       />
-      <div class="center muted" style={{ padding: '24px 18px' }}>{t('account_customizer_desc')}</div>
+      {w.canToggleMultiAccounts && (
+        <div style={{ padding: '0 24px' }}>
+          <div class="list">
+            <ToggleRow label={t('multiple_accounts')} value={multi} id="multiple_accounts_toggle" onChange={(v) => void toggleMulti(v)} />
+          </div>
+        </div>
+      )}
+      {multi && <div class="center muted" style={{ padding: '24px 18px' }}>{t('account_customizer_desc')}</div>}
+      {multi && (
       <div class="page-body" style={{ padding: '0 5% 196px' }}>
         <div class="col" style={{ alignItems: 'center', touchAction: drag?.active ? 'none' : undefined }} ref={cardsRef}>
           {visible.map((a, i) => {
             const front = i === visible.length - 1;
-            const design = designFromStyle(s.cardDesigns[`${w.id}:${a.index}`], w.currency.key);
+            const design = designFromStyle(storedCardStyle(s.cardDesigns, `${w.id}:${a.index}`), w.currency.key);
+            const shown = accountAmount(w, a.balance ?? 0n);
             const dragging = drag?.active && drag.from === i;
             return (
               <div
@@ -189,19 +223,22 @@ function WalletAccountsPage() {
                 onPointerCancel={() => setDrag(null)}
               >
                 <div style={{ position: front ? 'relative' : 'absolute', top: 0, left: 0, right: 0 }}>
-                  <BalanceCard design={design} label={accountLabel(a)} amount={front ? formatFixed(a.balance ?? 0n, w.currency.decimals, { fractionDigits: Math.min(w.currency.decimals, 8) }) : ''} asset={front ? w.currency.title.toUpperCase() : ''} hidden={hidden} width={768} onMenu={front ? () => void (async () => { if (await readyToManage(w)) nav.push(Routes.cardCustomizer, { account: a.index, canHide: visible.length > 1 }); })() : undefined} />
+                  <BalanceCard design={design} label={accountLabel(a)} amount={front ? shown.amount : ''} asset={front ? shown.asset : ''} hidden={hidden} width={768} onMenu={front ? () => void (async () => { if (await readyToManage(w)) nav.push(Routes.cardCustomizer, { account: a.index, canHide: visible.length > 1 }); })() : undefined} />
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-      <div style={{ position: 'absolute', left: '24px', right: '24px', bottom: '50px' }}>
-        <button type="button" id="add_account" disabled={busy} onClick={() => void add()} class="rowx" style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '18px', borderRadius: '999px', border: 0, background: 'var(--surface-container)', color: 'var(--primary)', fontWeight: 500, fontSize: '16px', cursor: 'pointer' }}>
-          <MIcon name="add" size={28} color="var(--primary)" />
-          {t('add_account')}
-        </button>
-      </div>
+      )}
+      {multi && (
+        <div style={{ position: 'absolute', left: '24px', right: '24px', bottom: '50px' }}>
+          <button type="button" id="add_account" disabled={busy} onClick={() => void add()} class="rowx" style={{ width: '100%', justifyContent: 'center', gap: '8px', padding: '18px', borderRadius: '999px', border: 0, background: 'var(--surface-container)', color: 'var(--primary)', fontWeight: 500, fontSize: '16px', cursor: 'pointer' }}>
+            <MIcon name="add" size={28} color="var(--primary)" />
+            {t('add_account')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -212,7 +249,7 @@ function AccountSummary({ a, w, funded }: { a: { index: number; label: string; b
     <div class="rowx" style={{ gap: '12px', padding: '12px 14px', borderRadius: '18px', background: funded ? 'none' : 'var(--surface-container)', border: funded ? '1px solid var(--warning-outline)' : 0, textAlign: 'start' }}>
       <Icon src="account.svg" size={24} color="var(--on-surface-variant)" />
       <span class="grow" style={{ fontWeight: 500 }}>{accountLabel(a)}</span>
-      {funded && <span>{`${formatFixed(a.balance ?? 0n, w.currency.decimals, { fractionDigits: Math.min(w.currency.decimals, 8) })} ${w.currency.title}`}</span>}
+      {funded && <span>{amountText(w, a.balance ?? 0n)}</span>}
     </div>
   );
 }
@@ -262,7 +299,7 @@ function ArchivedAccountsPage() {
     <button type="button" class="row tap has-icon" id={`archived_account_${a.index}`} onClick={() => void unarchive(a)}>
       <Icon src="account.svg" size={24} color="var(--on-surface-variant)" />
       <span class="lbl"><span>{accountLabel(a)}</span></span>
-      {(a.balance ?? 0n) > 0n && <span class="trail">{`${formatFixed(a.balance!, w.currency.decimals, { fractionDigits: Math.min(w.currency.decimals, 8) })} ${w.currency.title}`}</span>}
+      {(a.balance ?? 0n) > 0n && <span class="trail">{amountText(w, a.balance!)}</span>}
     </button>
   );
   return (

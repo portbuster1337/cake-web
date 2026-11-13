@@ -16,6 +16,7 @@ import { isEvm, WALLET_TYPE_NAME } from '../../coins/types.ts';
 import { formatFixed, tryParseFixed } from '../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount } from '../../app/prices.ts';
 import type { WalletAddressEntry, WalletBase } from '../../core/wallet.ts';
+import { cardStyleKey, designFromStyle, MiniCard, storedCardStyle } from './dashboard/cards.tsx';
 
 function chunkFor(w: WalletBase): number {
   return w.type === 'monero' || w.type === 'wownero' || w.type === 'zano' ? 6 : 4;
@@ -264,6 +265,7 @@ function AddressesPage({ args }: { args?: { hidden?: boolean; picker?: boolean }
       <div class="page-body" style={{ padding: '0 16px 100px' }}>
         {!showHidden && (
           <>
+            {w.isMultiAccountsEnabled && <AccountPreviewHeader w={w} />}
             <div class="muted" style={{ fontSize: '10px', textAlign: 'center', marginBottom: '16px' }}>{t('long_press_edit_address')}</div>
             <button type="button" class="rowx" onClick={() => nav.push(Routes.receiveAddresses, { hidden: true })} style={{ width: '100%', height: '48px', background: 'var(--surface-container)', borderRadius: '16px 16px 0 0', border: 0, padding: '0 16px', justifyContent: 'space-between', color: 'var(--on-surface)', cursor: 'pointer', borderBottom: '1px solid var(--surface-container-high)' }}>
               <span>{t('show_hidden_addresses')}</span>
@@ -281,6 +283,30 @@ function AddressesPage({ args }: { args?: { hidden?: boolean; picker?: boolean }
           <input placeholder={t('search')} value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} style={{ fontWeight: 600 }} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** AccountPreviewHeader: the selected account's card, its name, the wallet's name and the available balance */
+function AccountPreviewHeader({ w }: { w: WalletBase }) {
+  const s = settings.value;
+  const design = designFromStyle(storedCardStyle(s.cardDesigns, cardStyleKey(w)), w.currency.key);
+  const label = w.accounts.value.find((a) => a.index === w.currentAccount.value)?.label ?? '';
+  const available = w.balances.value[w.currency.key]?.available ?? 0n;
+  const sats = w.type === 'bitcoin' && s.displayAmountsInSatoshi;
+  return (
+    <div class="rowx" id="account_preview_header" style={{ height: '64px', width: '90%', margin: '0 auto 16px', padding: '12px', borderRadius: '16px', background: 'var(--surface-container)', justifyContent: 'space-between', boxSizing: 'border-box' }}>
+      <span class="rowx" style={{ gap: '10px', minWidth: 0 }}>
+        <MiniCard design={design} />
+        <span class="col" style={{ minWidth: 0 }}>
+          <span style={{ fontSize: '12px', color: 'var(--primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+          <span style={{ fontSize: '12px', color: 'var(--on-surface-variant)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.info.name}</span>
+        </span>
+      </span>
+      <span class="rowx" style={{ gap: '12px', flex: 'none' }}>
+        <span style={{ width: '1px', height: '40px', background: 'var(--surface-container-high)' }} />
+        <span>{s.balanceDisplayMode === 'hiddenBalance' ? '●●●●●●' : sats ? available.toString() : formatFixed(available, w.currency.decimals, { fractionDigits: Math.min(w.currency.decimals, 8) })}</span>
+      </span>
     </div>
   );
 }

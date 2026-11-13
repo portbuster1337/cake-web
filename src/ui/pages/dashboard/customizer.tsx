@@ -11,7 +11,7 @@ import { nav } from '../../nav.ts';
 import { currentWallet } from '../../../app/app.ts';
 import { settings, updateSettings } from '../../../app/settings.ts';
 import { currentPalette } from '../../theme/themes.ts';
-import { availableGradients, BalanceCard, CardArtwork, cardStyleKey, designFromStyle, GRADIENT_ONLY_DESIGN, iconDesign, iconPaths, isCardStyle, preferredCombo, specialDesign, withGradient, withGradientAndCombo, withIcon, type CardDesign } from './cards.tsx';
+import { availableGradients, BalanceCard, CardArtwork, cardStyleKey, designFromStyle, storedCardStyle, GRADIENT_ONLY_DESIGN, iconDesign, iconPaths, isCardStyle, preferredCombo, specialDesign, withGradient, withGradientAndCombo, withIcon, type CardDesign } from './cards.tsx';
 
 function MiniCard({ design }: { design: CardDesign }) {
   return (
@@ -29,7 +29,7 @@ function CardCustomizerPage({ args }: { args?: { account?: number; canHide?: boo
   const isAccount = account !== undefined;
   const key = w ? (isAccount ? `${w.id}:${account}` : cardStyleKey(w)) : '';
   const [name, setName] = useState(() => (isAccount ? w?.accounts.value.find((a) => a.index === account)?.label ?? '' : ''));
-  const stored = s.cardDesigns[key];
+  const stored = storedCardStyle(s.cardDesigns, key);
   const current = designFromStyle(stored, cur);
   const special = specialDesign(cur);
   const designs: CardDesign[] = [GRADIENT_ONLY_DESIGN, iconDesign(cur), ...(special ? [special] : [])];
