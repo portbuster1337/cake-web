@@ -184,6 +184,8 @@ export interface PendingTransaction {
   count?: number;
   /** extra rows for the confirmation sheet */
   extra?: Record<string, string>;
+  /** shown under the fee on the confirmation sheet (Solana: recipient token account creation cost) */
+  notice?: string;
   commit(): Promise<void>;
 }
 

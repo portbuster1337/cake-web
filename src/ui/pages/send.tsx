@@ -493,6 +493,7 @@ function ConfirmSheet({ w, credentials, assetSymbol, decimals, api, close }: { w
                   <span>{t('network')}</span>
                   <span class="muted">{WALLET_TYPE_NAME[w.type]}{isEvm(w.type) ? '' : ''}</span>
                 </div>
+                {pending.notice && <div class="muted" id="send_confirm_notice" style={{ padding: '12px', borderTop: '1px solid var(--surface-container-high)' }}>{pending.notice}</div>}
               </div>
             )}
             {state === 'ready' && pending && (

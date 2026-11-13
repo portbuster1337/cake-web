@@ -84,6 +84,8 @@ export interface TokenWallet {
   tokenInfo(address: string): Promise<{ name: string; symbol: string; decimals: number; icon?: string } | null>;
   /** true when the contract looks risky (unverified / flagged); unknown counts as risky */
   checkContractRisk(address: string): Promise<boolean>;
+  /** Solana: verified on Jupiter (counts as trusted) */
+  isVerifiedToken?(address: string): Promise<boolean>;
   addToken(t: WalletToken): Promise<void>;
   deleteToken(address: string): Promise<void>;
   setTokenEnabled(address: string, enabled: boolean): Promise<void>;

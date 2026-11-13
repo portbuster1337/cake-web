@@ -58,9 +58,25 @@ export async function request(url: string, body: Uint8Array | string | undefined
   throw last;
 }
 
+/**
+ * request() + JSON. A 2xx answer that is not valid JSON is most often one whose
+ * Tor stream ended early (a cut-off body): it is asked once more, on a new circuit.
+ */
+async function requestJson<T>(url: string, body: Uint8Array | string | undefined, opts: HttpOptions): Promise<T> {
+  const attempts = (opts.retries ?? 2) > 0 ? 2 : 1;
+  for (let i = 0; ; i++) {
+    const res = await request(url, body, opts);
+    try {
+      return parseJson<T>(res, url);
+    } catch (e) {
+      if (i + 1 >= attempts || opts.signal?.aborted) throw e;
+      router().rotateIsolation(url, opts.scope ?? 'app');
+    }
+  }
+}
+
 export async function getJson<T = any>(url: string, opts: HttpOptions = {}): Promise<T> {
-  const res = await request(url, undefined, { ...opts, method: opts.method ?? 'GET', headers: { Accept: 'application/json', ...opts.headers } });
-  return parseJson<T>(res, url);
+  return requestJson<T>(url, undefined, { ...opts, method: opts.method ?? 'GET', headers: { Accept: 'application/json', ...opts.headers } });
 }
 
 export async function getText(url: string, opts: HttpOptions = {}): Promise<string> {
@@ -70,8 +86,7 @@ export async function getText(url: string, opts: HttpOptions = {}): Promise<stri
 
 export async function postJson<T = any>(url: string, payload: unknown, opts: HttpOptions = {}): Promise<T> {
   const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const res = await request(url, body, { ...opts, method: opts.method ?? 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...opts.headers } });
-  return parseJson<T>(res, url);
+  return requestJson<T>(url, body, { ...opts, method: opts.method ?? 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...opts.headers } });
 }
 
 export function parseJson<T>(res: NetResponse, url: string): T {

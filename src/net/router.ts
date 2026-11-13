@@ -30,6 +30,16 @@ export interface NetSettings {
 }
 
 /** monero.fail's onion mirror: reachable (with CORS) only if the browser itself uses Tor */
+/**
+ * User-Agent of every request sent through the in-page Tor client. Left alone,
+ * tor-js would send the browser's own (browser, version, OS: a fingerprint on
+ * every request). This is what Cake Wallet's app itself sends (dart:io
+ * HttpClient, Flutter 3.41 / Dart 3.11), so servers see the same client as for
+ * Cake's own users. Some APIs (Solana's public RPC) also refuse a browser
+ * User-Agent that comes without the rest of a browser's headers.
+ */
+export const TOR_USER_AGENT = 'Dart/3.11 (dart:io)';
+
 export const BROWSER_TOR_PROBE = 'http://livk2fpdv4xjnjrbxfz2tw3ptogqacn2dwfzxbxr3srinryxrcewemid.onion/api/v1/nodes/?crypto=monero&network=stagenet&type=onion&per_page=1';
 
 export interface NetRequest {
@@ -318,6 +328,7 @@ export class NetRouter {
     if (via === 'local') return this.#direct(req, headers, timeoutMs);
     if (via === 'browser-tor') return this.#direct(req, headers, timeoutMs, true);
     const tor = this.#torTransport();
+    if (!Object.keys(headers).some((k) => k.toLowerCase() === 'user-agent')) headers['User-Agent'] = TOR_USER_AGENT;
     const opts = { method: req.method, headers, body: req.body, timeoutMs, signal: req.signal };
     try {
       return await tor.fetch(req.url, { ...opts, isolationKey: isolation });

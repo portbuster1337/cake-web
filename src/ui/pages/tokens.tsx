@@ -144,6 +144,18 @@ function EditTokenPage({ args }: { args?: { token?: WalletToken; contractAddress
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errs, setErrs] = useState<Record<string, string | null>>({});
+  // _checkIfTokenIsVerifiedOnJupiter: remembered per address, so an edited address loses it
+  const [jupiter, setJupiter] = useState<string | null>(null);
+  useEffect(() => {
+    const a = address.trim();
+    if (!w || !isTokenWallet(w) || !w.isVerifiedToken || !a || !w.validateTokenAddress(a)) return;
+    let alive = true;
+    const id = setTimeout(() => void w.isVerifiedToken!(a).then((ok) => alive && ok && setJupiter(a)), 400);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [address]);
   useEffect(() => {
     if (!editing && args?.contractAddress) {
       setDisclaimer(true);
@@ -151,7 +163,8 @@ function EditTokenPage({ args }: { args?: { token?: WalletToken; contractAddress
     }
   }, []);
   if (!w || !isTokenWallet(w)) return null;
-  const verified = !!address && w.isDefaultToken(address);
+  const jupiterVerified = !!address.trim() && jupiter === address.trim();
+  const verified = (!!address && w.isDefaultToken(address)) || jupiterVerified;
   async function fill(a: string) {
     if (!w || !isTokenWallet(w) || !a.trim() || !w.validateTokenAddress(a.trim())) return;
     const info = await w.tokenInfo(a.trim()).catch(() => null);
@@ -183,7 +196,7 @@ function EditTokenPage({ args }: { args?: { token?: WalletToken; contractAddress
     }
     setBusy(true);
     try {
-      const trusted = w.isDefaultToken(a);
+      const trusted = w.isDefaultToken(a) || jupiter === a;
       const risky = !trusted && (await w.checkContractRisk(a));
       const sym = normalizeHomoglyphs(symbol.trim().toUpperCase());
       const scam = risky || (!trusted && (sym === w.currency.title.toUpperCase() || w.isSuspiciousToken({ name: name.trim(), symbol: symbol.trim(), address: a })));
@@ -220,6 +233,7 @@ function EditTokenPage({ args }: { args?: { token?: WalletToken; contractAddress
           {icon ? <Img src={icon} size={75} round /> : <span style={{ display: 'block', width: '75px', height: '75px', borderRadius: '50%', border: '2px dashed var(--surface-container-highest)' }} />}
           {verified && icon && <span style={{ position: 'absolute', right: 0, bottom: 0, width: '24px', height: '24px', borderRadius: '50%', background: 'var(--primary)', border: '2px solid var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--on-primary)' }}><MIcon name="check" size={16} /></span>}
         </div>
+        {jupiterVerified && <div style={{ fontWeight: 500, color: 'var(--primary)' }} id="edit_token_jupiter">{t('token_verified_on_jupiter')}</div>}
         <div style={{ alignSelf: 'stretch' }} onFocusOut={() => void fill(address)}>
           <Field value={address} onInput={onAddress} placeholder={t('contract_address')} error={errs.address} mono id="edit_token_address" suffix={<button type="button" class="ficon" aria-label={t('paste')} onClick={async () => { try { const v = (await navigator.clipboard.readText()).trim(); onAddress(v); setDisclaimer(true); void fill(v); } catch { /* clipboard blocked */ } }}><img src="./cake/images/paste_ios.png" alt="" style={{ width: '18px' }} /></button>} />
         </div>

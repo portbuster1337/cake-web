@@ -12,3 +12,4 @@ registerCoin('base', () => import('./evm/module.ts').then((m) => m.baseModule));
 registerCoin('arbitrum', () => import('./evm/module.ts').then((m) => m.arbitrumModule));
 registerCoin('bsc', () => import('./evm/module.ts').then((m) => m.bscModule));
 registerCoin('robinhood', () => import('./evm/module.ts').then((m) => m.robinhoodModule));
+registerCoin('solana', () => import('./solana/module.ts').then((m) => m.solanaModule));

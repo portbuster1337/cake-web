@@ -9,7 +9,7 @@ await Promise.all(urls.map(async (spec, i) => {
   for (let a = 0; a < 3; a++) {
     const t0 = Date.now();
     try {
-      const init = { anonOptions: { isolationKey: `p${i}-${a}` }, headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }, signal: AbortSignal.timeout(60000) };
+      const init = { anonOptions: { isolationKey: `p${i}-${a}` }, headers: { 'User-Agent': process.env.UA || 'Mozilla/5.0', Accept: 'application/json' }, signal: AbortSignal.timeout(60000) };
       if (body) { init.method = 'POST'; init.body = body; init.headers['Content-Type'] = 'application/json'; }
       const r = await c.fetch(url, init);
       const t = await r.text();
