@@ -197,6 +197,25 @@ export function transferChecked(o: { tokenProgram: string; source: string; mint:
   };
 }
 
+/** SPL Token CloseAccount (9): the account's lamports go to the destination */
+export function closeAccount(o: { tokenProgram: string; account: string; destination: string; owner: string }): Instruction {
+  return {
+    programId: o.tokenProgram,
+    keys: [
+      { pubkey: o.account, isSigner: false, isWritable: true },
+      { pubkey: o.destination, isSigner: false, isWritable: true },
+      { pubkey: o.owner, isSigner: true, isWritable: false },
+    ],
+    data: Uint8Array.of(9),
+  };
+}
+
+/** a token account's amount (the u64 after its mint and owner) */
+export function tokenAccountAmount(data: Uint8Array): bigint | null {
+  if (data.length < 72) return null;
+  return new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(64, true);
+}
+
 /** AssociatedTokenAccountProgram.associatedTokenAccountIdempotent */
 export function createAtaIdempotent(o: { payer: string; ata: string; owner: string; mint: string; tokenProgram: string }): Instruction {
   return {
@@ -239,7 +258,7 @@ export function parseMetadataAccount(data: Uint8Array): { name: string; symbol: 
     const str = () => {
       const len = dv.getUint32(off, true);
       off += 4;
-      const s = new TextDecoder().decode(data.subarray(off, off + len)).replace(/\0+$/g, '').trim();
+      const s = new TextDecoder().decode(data.subarray(off, off + len)).replace(/\0/g, '').trim();
       off += len;
       return s;
     };

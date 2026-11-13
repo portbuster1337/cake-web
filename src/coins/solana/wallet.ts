@@ -4,6 +4,8 @@
 // and legacy SPL transfers, history from the wallet's and its token accounts'
 // signatures (with Cake's native / SPL / swap parsing), base58 message signing.
 
+import { normalizeIpfsUrl } from '../../net/ipfs.ts';
+import { fetchRemote } from '../../net/remote.ts';
 import { signal } from '@preact/signals';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
@@ -18,7 +20,7 @@ import { slip10Ed25519 } from '../seeds/slip10.ts';
 import { t } from '../../core/i18n.ts';
 import { SPL_DEFAULT_TOKENS } from '../tokens.gen.ts';
 import { isTokenPropertiesSuspicious, tokenIcon, type TokenAsset, type TokenWallet, type WalletToken } from '../tokens.ts';
-import { ATA_PROGRAM, COMPUTE_BUDGET_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_ACCOUNT_SIZE, TOKEN_PROGRAM, WSOL_MINT, associatedTokenAddress, compileMessage, createAtaIdempotent, decodeAddress, isOnCurve, isValidSolAddress, metadataAddress, parseMetadataAccount, publicKeyOf, signMessage, signSerializedTransaction, signText, systemTransfer, transferChecked, verifyText } from './sol.ts';
+import { ATA_PROGRAM, COMPUTE_BUDGET_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_ACCOUNT_SIZE, TOKEN_PROGRAM, closeAccount, tokenAccountAmount, WSOL_MINT, associatedTokenAddress, compileMessage, createAtaIdempotent, decodeAddress, isOnCurve, isValidSolAddress, metadataAddress, parseMetadataAccount, publicKeyOf, signMessage, signSerializedTransaction, signText, systemTransfer, transferChecked, verifyText } from './sol.ts';
 
 export const SOL_PATH = "m/44'/501'/0'/0'";
 const POLL_MS = 30_000;
@@ -713,7 +715,7 @@ export class SolanaWallet extends WalletBase implements TokenWallet {
     return this.#pending(msg.bytes, lamports, fee, to);
   }
 
-  async #splTransfer(token: WalletToken, to: string, amount: bigint, solBal: bigint): Promise<PendingTransaction> {
+  async #splTransfer(token: WalletToken, to: string, amount: bigint, solBal: bigint, opts: { closeWhenEmptied?: boolean } = {}): Promise<PendingTransaction> {
     const mint = token.address;
     const offCurve = !isOnCurve(decodeAddress(to));
     const cand = (owner: string) => [associatedTokenAddress(owner, mint, TOKEN_PROGRAM), associatedTokenAddress(owner, mint, TOKEN_2022_PROGRAM)];
@@ -749,13 +751,20 @@ export class SolanaWallet extends WalletBase implements TokenWallet {
       ...(create ? [createAtaIdempotent({ payer: this.address, ata: rcptAta, owner: to, mint, tokenProgram: senderProgram })] : []),
       transferChecked({ tokenProgram: senderProgram, source: senderAta, mint, destination: rcptAta, owner: this.address, amount, decimals: token.decimals }),
     ];
+    // closeSenderAccountWhenEmptied: an account without extensions whose whole balance is sent is closed
+    if (opts.closeWhenEmptied && senderInfo.space === TOKEN_ACCOUNT_SIZE && tokenAccountAmount(senderInfo.data) === amount) {
+      ixs.push(closeAccount({ tokenProgram: senderProgram, account: senderAta, destination: this.address, owner: this.address }));
+    }
     const bh = await this.#blockhash();
     const msg = compileMessage(ixs, this.address, bh);
     const fee = await this.#feeFor(msg.bytes);
     const creation = create ? await this.#rentExempt(senderInfo.space) : 0n;
     if (!(solBal - (creation + fee) > (await this.#rentExempt(TOKEN_ACCOUNT_SIZE)))) throw new Error(t('solana_sign_spl_token_transaction_rent_exception'));
     const p = await this.#pending(msg.bytes, amount, fee, to, token);
-    if (create) p.notice = t('recipient_account_creation_fee', { amount: `${formatFixed(creation, 9)} SOL` });
+    if (create) {
+      p.notice = t('recipient_account_creation_fee', { amount: `${formatFixed(creation, 9)} SOL` });
+      p.additionalCost = creation;
+    }
     return p;
   }
 
@@ -776,6 +785,75 @@ export class SolanaWallet extends WalletBase implements TokenWallet {
         void this.#pollForTransaction(signature);
       },
     };
+  }
+
+  // ------------------------------------------------------------- NFTs --
+
+  /**
+   * getHeldTokenMints: the mints of every token account (both token programs) with an amount; `nftLike` are the
+   * ones held as one unit without decimals.
+   */
+  async heldTokenMints(): Promise<{ held: Set<string>; nftLike: string[] }> {
+    const opts = { encoding: 'jsonParsed', commitment: 'confirmed' };
+    const res = await this.#batch(
+      [
+        { method: 'getTokenAccountsByOwner', params: [this.address, { programId: TOKEN_PROGRAM }, opts] },
+        { method: 'getTokenAccountsByOwner', params: [this.address, { programId: TOKEN_2022_PROGRAM }, opts] },
+      ],
+      'nft accounts',
+    );
+    const held = new Set<string>();
+    const nftLike: string[] = [];
+    for (const r of res) {
+      if (r instanceof RpcError) throw r;
+      for (const a of r?.value ?? []) {
+        const info = a?.account?.data?.parsed?.info;
+        const amount = BigInt(info?.tokenAmount?.amount ?? '0');
+        if (!info?.mint || amount <= 0n) continue;
+        held.add(info.mint);
+        if (Number(info.tokenAmount?.decimals) === 0 && amount === 1n && !nftLike.includes(info.mint)) nftLike.push(info.mint);
+      }
+    }
+    return { held, nftLike };
+  }
+
+  /** getNFTOnChainMetadata: the Metaplex metadata account, and the image of its JSON (https only, at most 256 KiB) */
+  async nftOnChainMetadata(mint: string): Promise<{ mint: string; name: string; symbol: string; metadataUri: string; imageUrl: string | null } | null> {
+    try {
+      const [info] = await this.#accountInfos([metadataAddress(mint)]);
+      const md = info ? parseMetadataAccount(info.data) : null;
+      if (!md) return null;
+      let imageUrl: string | null = null;
+      const url = normalizeIpfsUrl(md.uri);
+      if (url?.startsWith('https://')) {
+        try {
+          const res = await fetchRemote(url, { scope: this.ctx.scope, maxBytes: 256 * 1024, timeoutMs: 30_000, purpose: 'nft metadata' });
+          const j = JSON.parse(new TextDecoder().decode(res.body));
+          if (typeof j?.image === 'string') imageUrl = j.image;
+        } catch { /* no image */ }
+      }
+      return { mint, name: md.name, symbol: md.symbol, metadataUri: md.uri, imageUrl };
+    } catch {
+      return null;
+    }
+  }
+
+  /** isSupplyOfOne: a supply of exactly one, without decimals (RPC errors are thrown) */
+  async isSupplyOfOne(mint: string): Promise<boolean> {
+    const r = await this.#rpc<{ value?: { amount?: string; decimals?: number } }>('getTokenSupply', [mint, { commitment: 'confirmed' }], 'nft supply');
+    return r?.value?.amount === '1' && r?.value?.decimals === 0;
+  }
+
+  /**
+   * sendNFT: only a mint with a supply of one; one unit to the recipient's token account (created when missing), and
+   * the sender's emptied token account closed so its rent comes back.
+   */
+  async createNftTransaction(mint: string, to: string, meta: { name?: string } = {}): Promise<PendingTransaction> {
+    const dest = to.trim();
+    if (!isValidSolAddress(dest)) throw new Error(t('error_text_address'));
+    if (!(await this.isSupplyOfOne(mint))) throw new Error(t('nft_send_not_an_nft'));
+    const solBal = BigInt((await this.#rpc<{ value: number }>('getBalance', [this.address, { commitment: 'confirmed' }], 'balance')).value);
+    return this.#splTransfer({ address: mint, name: meta.name ?? 'NFT', symbol: 'NFT', decimals: 0, enabled: true, isPotentialScam: false }, dest, 1n, solBal, { closeWhenEmptied: true });
   }
 
   /** signAndPrepareJupiterSwapTransaction: sign a transaction a swap provider built for this wallet (base64 in and out) */

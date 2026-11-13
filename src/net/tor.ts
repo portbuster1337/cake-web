@@ -30,6 +30,16 @@ export interface TorFetchInit {
   /** give up if no data arrives for this long (a stalled stream); default 90 s */
   idleMs?: number;
   signal?: AbortSignal;
+  /** stop reading (and fail) once the body is larger than this */
+  maxBytes?: number;
+}
+
+/** a response body over the request's maxBytes (not retried) */
+export class ResponseTooLargeError extends Error {
+  constructor(limit: number) {
+    super(`Response larger than ${limit} bytes`);
+    this.name = 'ResponseTooLargeError';
+  }
 }
 
 export interface RawResponse {
@@ -187,6 +197,7 @@ export class TorTransport {
       alive();
       const chunks: Uint8Array[] = [];
       let size = 0;
+      let tooLarge = false;
       try {
         const reader = res.body?.getReader();
         if (reader) {
@@ -204,15 +215,22 @@ export class TorTransport {
             if (done) break;
             chunks.push(value);
             size += value.length;
+            if (init.maxBytes !== undefined && size > init.maxBytes) {
+              tooLarge = true;
+              reader.cancel().catch(() => {});
+              break;
+            }
             alive();
           }
         } else {
           chunks.push(new Uint8Array(await res.arrayBuffer()));
           size = chunks[0].length;
+          tooLarge = init.maxBytes !== undefined && size > init.maxBytes;
         }
       } catch (e) {
         throw fail(e);
       }
+      if (tooLarge) throw new ResponseTooLargeError(init.maxBytes!);
       const body = chunks.length === 1 ? chunks[0] : new Uint8Array(size);
       if (chunks.length > 1) {
         let o = 0;

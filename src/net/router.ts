@@ -14,7 +14,7 @@
 //  * I2P and anything else are refused.
 
 import { parseNodeUrl, type NodeKind } from './addr.ts';
-import { TorTransport, TorConnectError, type TorStatus, type RawResponse } from './tor.ts';
+import { ResponseTooLargeError, TorTransport, TorConnectError, type TorStatus, type RawResponse } from './tor.ts';
 import { parseRelayList } from './relays.ts';
 import { anySignal, timeoutSignal } from './signals.ts';
 import { md5Hex } from './md5.ts';
@@ -58,6 +58,8 @@ export interface NetRequest {
   signal?: AbortSignal;
   /** short label for the network activity log */
   purpose?: string;
+  /** fail once the response body is larger than this (remote images, metadata) */
+  maxBytes?: number;
 }
 
 export type Via = 'tor' | 'local' | 'browser-tor';
@@ -329,7 +331,7 @@ export class NetRouter {
     if (via === 'browser-tor') return this.#direct(req, headers, timeoutMs, true);
     const tor = this.#torTransport();
     if (!Object.keys(headers).some((k) => k.toLowerCase() === 'user-agent')) headers['User-Agent'] = TOR_USER_AGENT;
-    const opts = { method: req.method, headers, body: req.body, timeoutMs, signal: req.signal };
+    const opts = { method: req.method, headers, body: req.body, timeoutMs, signal: req.signal, maxBytes: req.maxBytes };
     try {
       return await tor.fetch(req.url, { ...opts, isolationKey: isolation });
     } catch (e) {
@@ -369,7 +371,9 @@ export class NetRouter {
     res.headers.forEach((v, k) => {
       out[k] = v;
     });
-    return { status: res.status, statusText: res.statusText, headers: out, body: new Uint8Array(await res.arrayBuffer()) };
+    const body = new Uint8Array(await res.arrayBuffer());
+    if (req.maxBytes !== undefined && body.length > req.maxBytes) throw new ResponseTooLargeError(req.maxBytes);
+    return { status: res.status, statusText: res.statusText, headers: out, body };
   }
 
   close(): void {

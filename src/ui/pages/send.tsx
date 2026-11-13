@@ -7,7 +7,7 @@ import { showAlert, showSheet, toast } from '../components/overlays.tsx';
 import { requireAuth } from '../components/auth.tsx';
 import { registerRoute, Routes } from '../routes.ts';
 import { nav } from '../nav.ts';
-import { currentWallet } from '../../app/app.ts';
+import { currentWallet, walletInfos } from '../../app/app.ts';
 import { settings } from '../../app/settings.ts';
 import { contacts } from '../../app/contacts.ts';
 import { formatFixed, tryParseFixed } from '../../core/amount.ts';
@@ -44,6 +44,17 @@ export function assetsOf(w: WalletBase): AssetInfo[] {
   const extra: any[] = (w as any).assetList?.() ?? [];
   for (const a of extra) if (a.key !== w.currency.key) list.push({ key: a.key, symbol: a.symbol, decimals: a.decimals, balance: a.balance, api: a.api, icon: a.icon });
   return list;
+}
+
+/**
+ * SendViewModel.shouldDisplayTotp (checkThroughChecksToDisplayTOTP): the 2FA code when any recipient asks for it —
+ * a contact, one of the wallets, or anyone else, each by its own setting.
+ */
+export function sendNeedsTotp(addresses: string[]): boolean {
+  const s = settings.value;
+  return addresses.some((a) =>
+    contacts.value.some((c) => c.address === a) ? s.shouldRequireTOTP2FAForSendsToContact : walletInfos.value.some((w) => w.address === a) ? s.shouldRequireTOTP2FAForSendsToInternalWallets : s.shouldRequireTOTP2FAForSendsToNonContact,
+  );
 }
 
 function SendPage({ args }: { args?: { address?: string; amount?: string; asset?: string; note?: string } }) {
@@ -135,7 +146,7 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
       await showAlert({ title: t('error'), content: t('check_receiver_forms') });
       return;
     }
-    if (!(await requireAuth())) return;
+    if (!(await requireAuth({ totp: sendNeedsTotp(recipients.map((rr) => rr.resolved?.address ?? rr.address.trim())) }))) return;
     const credentials = {
       outputs: recipients.map((rr) => ({
         address: rr.address.trim(),

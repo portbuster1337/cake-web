@@ -3,33 +3,25 @@
 // allows its own, data: and blob: images). Cached for the session.
 
 import { useEffect, useState } from 'preact/hooks';
-import { request } from '../../net/http.ts';
+import { fetchRemote, sniffImage } from '../../net/remote.ts';
 import { Img } from './core.tsx';
 
 const cache = new Map<string, Promise<string | null>>();
+/** logos and card art */
 const MAX_BYTES = 512 * 1024;
 
-function sniff(body: Uint8Array, header: string): string | null {
-  const h = header.split(';')[0].trim().toLowerCase();
-  if (/^image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon)$/.test(h)) return h;
-  const head = new TextDecoder().decode(body.subarray(0, 256)).trimStart().toLowerCase();
-  if (head.startsWith('<svg') || (head.startsWith('<?xml') && head.includes('<svg'))) return 'image/svg+xml';
-  if (body[0] === 0x89 && body[1] === 0x50) return 'image/png';
-  if (body[0] === 0xff && body[1] === 0xd8) return 'image/jpeg';
-  return null;
-}
-
-export function torImageUrl(url: string): Promise<string | null> {
-  let p = cache.get(url);
+/** a remote image over Tor as a blob: URL (null when it cannot be had or is no image); `scope`: whose circuits */
+export function torImageUrl(url: string, maxBytes = MAX_BYTES, scope = 'images'): Promise<string | null> {
+  const key = `${maxBytes}|${url}`;
+  let p = cache.get(key);
   if (!p) {
-    p = request(url, undefined, { scope: 'images', timeoutMs: 45_000, retries: 1, purpose: 'image' })
+    p = fetchRemote(url, { scope, maxBytes, timeoutMs: 60_000, purpose: 'image' })
       .then((r) => {
-        if (r.body.length > MAX_BYTES) return null;
-        const type = sniff(r.body, r.headers['content-type'] ?? '');
+        const type = sniffImage(r.body, r.headers['content-type'] ?? '');
         return type ? URL.createObjectURL(new Blob([r.body as BlobPart], { type })) : null;
       })
       .catch(() => null);
-    cache.set(url, p);
+    cache.set(key, p);
   }
   return p;
 }

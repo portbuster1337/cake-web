@@ -34,6 +34,8 @@ async function setup(name) {
   // Settings → Security → Duress PIN
   await page.evaluate(() => window.__cw.nav.push('/security_and_backup_page'));
   await click('#security_duress');
+  await page.waitForSelector('#auth_sheet', { visible: true });
+  await wait(500);
   await pin('1234'); // requireAuth
   await okAlert(); // notice
   await okAlert(); // "Did you back up all your seeds?" → Yes
@@ -45,7 +47,11 @@ async function setup(name) {
   const refused = await page.$eval('.alert', (e) => e.innerText.replace(/\s+/g, ' ').trim());
   await okAlert();
   await settled();
-  await pin('9999'); await wait(500); await pin('9999');
+  await pin('9999');
+  // the pad clears and asks again; taps before that are lost
+  await page.waitForFunction(() => /again/i.test(document.body.innerText), { timeout: 30000 });
+  await wait(600);
+  await pin('9999');
   await okAlert(); // "Duress PIN set up successfully"
   await settled();
   return { browser, page, click, pin, refused };

@@ -2,7 +2,7 @@
 // retries on a fresh Tor circuit. Every call goes through the router (Tor).
 
 import { NetRouter, HttpError, PolicyError, type NetRequest, type NetResponse } from './router.ts';
-import { TorConnectError } from './tor.ts';
+import { ResponseTooLargeError, TorConnectError } from './tor.ts';
 
 let current: NetRouter | null = null;
 
@@ -20,7 +20,11 @@ export interface HttpOptions extends Omit<NetRequest, 'url' | 'body'> {
   retries?: number;
   /** accept these non-2xx statuses instead of throwing */
   okStatuses?: number[];
+  /** follow up to this many redirects, to https URLs only (default 0: a redirect is an answer like any other) */
+  followRedirects?: number;
 }
+
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
 const dec = new TextDecoder();
 
@@ -29,7 +33,7 @@ export function text(res: NetResponse): string {
 }
 
 function retryable(e: unknown): boolean {
-  if (e instanceof PolicyError) return false;
+  if (e instanceof PolicyError || e instanceof ResponseTooLargeError) return false;
   if (e instanceof HttpError) return e.status >= 500 || e.status === 429;
   if (e instanceof TorConnectError) return true;
   const msg = (e as Error)?.message ?? '';
@@ -40,10 +44,16 @@ export async function request(url: string, body: Uint8Array | string | undefined
   const r = router();
   const attempts = 1 + (opts.retries ?? 2);
   let last: unknown;
+  let redirect: { status: number; location: string } | null = null;
   for (let i = 0; i < attempts; i++) {
     if (opts.signal?.aborted) throw new Error('Request cancelled');
     try {
       const res = await r.request({ ...opts, url, body });
+      const location = res.headers.location;
+      if ((opts.followRedirects ?? 0) > 0 && REDIRECTS.has(res.status) && location) {
+        redirect = { status: res.status, location };
+        break;
+      }
       if ((res.status < 200 || res.status >= 300) && !opts.okStatuses?.includes(res.status)) {
         throw new HttpError(res.status, text(res), url);
       }
@@ -55,6 +65,13 @@ export async function request(url: string, body: Uint8Array | string | undefined
       const limited = e instanceof HttpError && e.status === 429;
       await new Promise((ok) => setTimeout(ok, limited ? Math.min(8_000, 1_500 * 2 ** i) : 400 * (i + 1)));
     }
+  }
+  if (redirect) {
+    const next = new URL(redirect.location, url);
+    if (next.protocol !== 'https:') throw new PolicyError(`redirect to a non-https address (${next.protocol})`);
+    // 301/302/303 go on as a GET without the body; 307/308 repeat the request
+    const keep = redirect.status === 307 || redirect.status === 308;
+    return request(next.href, keep ? body : undefined, { ...opts, method: keep ? opts.method : 'GET', followRedirects: opts.followRedirects! - 1 });
   }
   throw last;
 }

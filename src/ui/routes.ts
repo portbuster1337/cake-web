@@ -111,6 +111,7 @@ export const Routes = {
   walletConnectConnectionsListing: '/wallet-connect-connections-listing',
   nftDetailsPage: '/nft_details_page',
   importNFTPage: '/import_nft_page',
+  nftSendPage: '/nft_send_page',
   startTor: '/start_tor',
   receiveAddresses: '/receive_addresses',
   devNetworkRequests: '/dev/network_requests',

@@ -1,5 +1,7 @@
 // NewHomePage (lib/new-ui/pages/home_page.dart).
 
+import { NftListing } from './nfts.tsx';
+import { isNftWallet } from '../../../nft/nfts.ts';
 import { openBuySellSelector } from '../buy/buy.tsx';
 import { buildCsv, csvFileName, type CsvItem } from '../../../app/csv.ts';
 import { useState } from 'preact/hooks';
@@ -218,28 +220,38 @@ function WalletHome({ w }: { w: WalletBase }) {
   );
 }
 
+type HomeTab = 'assets' | 'history' | 'nfts';
+
+/** AssetsHistorySection: Assets (wallets with tokens), History, NFTs (isNFTACtivatedChain); one tab shows the History bar */
 function AssetsHistory({ w, txs, hidden }: { w: WalletBase; txs: ReturnType<WalletBase['transactions']['peek']>; hidden: boolean }) {
   const hasAssets = w.hasTokens;
-  const [tab, setTab] = useState<'assets' | 'history'>(hasAssets ? 'assets' : 'history');
+  const tabs: HomeTab[] = [...(hasAssets ? (['assets'] as const) : []), 'history', ...(isNftWallet(w) ? (['nfts'] as const) : [])];
+  // reloadTabs: a different number of tabs starts again at the first
+  const [sel, setSel] = useState<{ n: number; tab: HomeTab }>({ n: tabs.length, tab: tabs[0] });
+  const tab = sel.n === tabs.length && tabs.includes(sel.tab) ? sel.tab : tabs[0];
+  const setTab = (next: HomeTab) => setSel({ n: tabs.length, tab: next });
   // DashboardViewModel.itemsShort: the first 3 items, swaps included
   const short = historyItems(w, txs).slice(0, 3);
   const syncing = !isSynced(w.syncStatus.value);
+  const label: Record<HomeTab, string> = { assets: t('assets'), history: t('history'), nfts: t('nfts') };
+  const multi = tabs.length > 1;
   return (
     <div style={{ padding: '20px 16px 0' }}>
-      {hasAssets ? (
-        <div class="rowx" style={{ justifyContent: 'space-between', padding: '0 2px 18px 0' }}>
+      {multi ? (
+        <div class="rowx" style={{ justifyContent: 'space-between', padding: '0 2px 18px 0', minHeight: '40px' }}>
           <div class="tabs-line">
-            <button type="button" class={tab === 'assets' ? 'on' : ''} onClick={() => setTab('assets')}>{t('assets')}</button>
-            <button type="button" class={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>{t('history')}</button>
+            {tabs.map((k) => <button type="button" class={tab === k ? 'on' : ''} id={`home_tab_${k}`} onClick={() => setTab(k)}>{label[k]}</button>)}
           </div>
           {tab === 'assets' ? (
             <button type="button" class="pill" style={{ height: '40px' }} id="assets_tokens" onClick={() => nav.push(Routes.homeSettings)}>
               {t('tokens')} <Icon src="options_slider.svg" size={16} color="var(--primary)" />
             </button>
-          ) : (
+          ) : tab === 'history' ? (
             <button type="button" class="pill" style={{ height: '40px' }} onClick={() => openHistoryModal(w)} id="history_all">
               {t('all_pascal_case')} <Icon src="arrow_right.svg" w={7} h={12} color="var(--primary)" />
             </button>
+          ) : (
+            <span style={{ height: '40px' }} />
           )}
         </div>
       ) : (
@@ -248,11 +260,13 @@ function AssetsHistory({ w, txs, hidden }: { w: WalletBase; txs: ReturnType<Wall
           <Icon src="arrow_right.svg" w={7} h={12} color="var(--on-surface-variant)" />
         </button>
       )}
-      {tab === 'assets' && hasAssets ? (
+      {tab === 'assets' ? (
         <AssetsList w={w} hidden={hidden} />
+      ) : tab === 'nfts' ? (
+        <NftListing w={w} />
       ) : short.length ? (
-        <div style={hasAssets ? undefined : { marginTop: '-1px' }}>
-          <HistoryListJoined w={w} txs={short} hidden={hidden} joined={!hasAssets} />
+        <div style={multi ? undefined : { marginTop: '-1px' }}>
+          <HistoryListJoined w={w} txs={short} hidden={hidden} joined={!multi} />
         </div>
       ) : (
         !syncing && <div class="muted center" style={{ paddingTop: '24px' }} id="no_transactions">{t('transactions_will_appear_here')}</div>

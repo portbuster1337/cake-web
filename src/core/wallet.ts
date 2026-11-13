@@ -186,6 +186,8 @@ export interface PendingTransaction {
   extra?: Record<string, string>;
   /** shown under the fee on the confirmation sheet (Solana: recipient token account creation cost) */
   notice?: string;
+  /** additionalCost: what the transaction costs on top of the fee, in the coin's base units (that creation cost) */
+  additionalCost?: bigint;
   commit(): Promise<void>;
 }
 

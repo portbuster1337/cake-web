@@ -22,4 +22,6 @@ import { settings as settingsSignal } from './app/settings.ts';
 import { nav as navApi } from './ui/nav.ts';
 import * as tradesApi from './exchange/trades.ts';
 import * as cakePayApi from './cakepay/service.ts';
-(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi, cakepay: cakePayApi };
+import { router as netRouter } from './net/http.ts';
+import { nftViewModel } from './nft/nfts.ts';
+(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi, cakepay: cakePayApi, net: netRouter, nfts: nftViewModel };

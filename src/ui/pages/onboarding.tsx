@@ -9,6 +9,7 @@ import { nav } from '../nav.ts';
 import { registerRoute, Routes } from '../routes.ts';
 import { Button, Img, Page } from '../components/core.tsx';
 import { PinCode } from '../components/pincode.tsx';
+import { saveLastAuthTime } from '../components/auth.tsx';
 import { showAlert } from '../components/overlays.tsx';
 import { currentPalette } from '../theme/themes.ts';
 import { setupPin, unlock, lockoutState, torStatus, phase } from '../../app/app.ts';
@@ -131,6 +132,8 @@ function SetupPinCodePage({ args }: { args?: { onSuccess?: () => void; isDuress?
             } else {
               await setupPin(pin);
               updateSettings({ pinLength: len as 4 | 6 });
+              // SetupPinCodeViewModel.setupPinCode: the new PIN counts as entered
+              saveLastAuthTime();
             }
             await showAlert({ title, content: args?.isDuress ? t('durres_PIN_set_up_successfully') : t('setup_successful'), right: t('ok') });
             if (args?.onSuccess) args.onSuccess();
@@ -196,6 +199,8 @@ function LoginPage() {
           setBusy(true);
           try {
             const r = await unlock(pin);
+            // AuthViewModel: a successful PIN entry, here the unlock too, starts the "Require PIN after" time
+            if (r.ok && !r.duress) saveLastAuthTime();
             if (!r.ok) {
               api.clear();
               if (r.bannedUntil) setError(`${t('auth_store_banned_for')}${Math.ceil((r.bannedUntil - Date.now()) / 60000)}${t('auth_store_banned_minutes')}`);
