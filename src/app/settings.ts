@@ -132,6 +132,8 @@ export interface Settings {
   /** card designs per wallet/account */
   /** balance card styles (BalanceCardStyleSettings), keyed "<walletId>:<accountIndex>" */
   cardDesigns: Record<string, { gradientIndex: number; useSpecialDesign: boolean; iconStyleIndex: number; isGradientOnly: boolean }>;
+  /** BalanceCardStyleSettings.cardOrder / hidden: per wallet, the visible accounts back to front and the archived ones */
+  accountCards: Record<string, { order: number[]; hidden: number[] }>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -233,6 +235,7 @@ export const DEFAULT_SETTINGS: Settings = {
   walletListOrder: [],
   walletGroupNames: {},
   cardDesigns: {},
+  accountCards: {},
 };
 
 export const settings = signal<Settings>({ ...DEFAULT_SETTINGS });

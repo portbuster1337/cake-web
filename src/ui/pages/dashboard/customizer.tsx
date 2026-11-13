@@ -3,8 +3,10 @@
 
 import { useState } from 'preact/hooks';
 import { t } from '../../../core/i18n.ts';
-import { Field, Img, TopBar } from '../../components/core.tsx';
+import { Field, Icon, Img, TopBar } from '../../components/core.tsx';
 import { registerRoute, Routes } from '../../routes.ts';
+import { accountLayout, confirmArchive, saveAccountLayout } from './accounts.tsx';
+import { hideCard } from '../../../app/cardLayout.ts';
 import { nav } from '../../nav.ts';
 import { currentWallet } from '../../../app/app.ts';
 import { settings, updateSettings } from '../../../app/settings.ts';
@@ -19,7 +21,7 @@ function MiniCard({ design }: { design: CardDesign }) {
   );
 }
 
-function CardCustomizerPage({ args }: { args?: { account?: number } }) {
+function CardCustomizerPage({ args }: { args?: { account?: number; canHide?: boolean } }) {
   const w = currentWallet.value;
   const s = settings.value;
   const cur = w?.currency.key ?? '';
@@ -43,6 +45,15 @@ function CardCustomizerPage({ args }: { args?: { account?: number } }) {
     const label = name.trim();
     if (isAccount && acc && label !== acc.label) await (w as { renameAccount?: (i: number, l: string) => Promise<void> }).renameAccount?.(account!, label).catch(() => {});
     nav.pop();
+  };
+  /** _requestArchive: confirmed, the account is archived and the next card in front becomes the selected account */
+  const archive = async () => {
+    if (!acc || !(await confirmArchive(w, { ...acc, label: name.trim() || acc.label }))) return;
+    await close();
+    const next = hideCard(accountLayout(w), account!);
+    saveAccountLayout(w, next);
+    const front = next.visible[next.visible.length - 1];
+    if (front !== undefined && w.currentAccount.value === account) await (w as { setAccount?: (i: number) => Promise<void> }).setAccount?.(front);
   };
   /** CardCustomizerState.selectedDesign */
   const designAt = (i: number, color = colorIdx, icon = iconIdx): CardDesign => {
@@ -119,6 +130,20 @@ function CardCustomizerPage({ args }: { args?: { account?: number } }) {
               </div>
             </div>
           </div>
+          {isAccount && args?.canHide && (
+            <div style={{ padding: '0 18px 24px' }}>
+              <div class="list">
+                <button type="button" class="row tap has-icon" id="archive_account" onClick={() => void archive()} style={{ minHeight: '64px' }}>
+                  <span style={{ padding: '2.5px', display: 'flex' }}><Icon src="archived.svg" size={19} color="var(--primary)" /></span>
+                  <span class="lbl">
+                    <span>{t('archive_account')}</span>
+                    <span class="sub" style={{ fontSize: '12px' }}>{t('archive_account_reversible')}</span>
+                  </span>
+                  <Icon src="arrow_forward.svg" w={8} h={14} color="var(--on-surface-variant)" class="chev" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

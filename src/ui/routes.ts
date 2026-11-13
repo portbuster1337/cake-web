@@ -106,6 +106,7 @@ export const Routes = {
   setup2faInfoPage: '/setup_2fa_info_page',
   homeSettings: '/home_settings',
   editToken: '/edit_token',
+  archivedAccounts: '/archived_accounts',
   walletAccountsPage: '/wallet_accounts_page',
   cardCustomizer: '/card_customizer',
   manageNodes: '/manage_nodes',

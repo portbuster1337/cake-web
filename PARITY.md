@@ -15,7 +15,7 @@ exist.
 
 | Wallet | Status | Notes |
 | --- | --- | --- |
-| Monero | ✅ | Polyseed, 25-word legacy and BIP-39 seeds, keys; accounts and subaddresses, hidden addresses, sign/verify, rescan. monero-ts (WASM) with the node over Tor. |
+| Monero | ✅ | Polyseed, 25-word legacy and BIP-39 seeds, keys; accounts (Cake's card deck: tap to bring a card in front, drag to reorder, archive and unarchive) and subaddresses, hidden addresses, sign/verify, rescan. monero-ts (WASM) with the node over Tor. |
 | Bitcoin | ✅ | BIP-39 and Electrum seeds, all of Cake's address types and derivations, accounts, coin control, RBF bump fee, sign/verify, silent payments **sending** (BIP-352). |
 | Litecoin | ✅ | No MWEB (it needs Cake's MWEB daemon). |
 | Bitcoin Cash, Dogecoin | ✅ | Dogecoin through Bitcore (other indexers refuse Tor exits). |
