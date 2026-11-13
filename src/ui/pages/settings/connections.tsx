@@ -124,6 +124,9 @@ export async function testNode(n: Node): Promise<number> {
     case 'blockchair':
       await getJson(`${base}/${n.chain}/stats`, opts);
       break;
+    case 'bitcore':
+      await getJson(`${base}/block/tip`, opts);
+      break;
     case 'evm':
       await jsonRpc(base, 'eth_blockNumber', [], opts);
       break;
@@ -323,7 +326,7 @@ function NodeFormPage({ args }: { args: { type: WalletType; pow?: boolean; node?
             {(args.type === 'bitcoin' || args.type === 'litecoin' || args.type === 'bitcoinCash' || args.type === 'dogecoin') && (
               <Section>
                 <Row label="API" trailingText={kind === 'esplora' ? 'Esplora (mempool / electrs)' : kind === 'blockbook' ? 'Blockbook' : 'Blockchair'} onClick={async () => {
-                  const v = await pickOption('API', [{ id: 'esplora', label: 'Esplora (mempool / electrs)' }, { id: 'blockbook', label: 'Blockbook' }], kind);
+                  const v = await pickOption('API', [{ id: 'esplora', label: 'Esplora (mempool / electrs)' }, { id: 'blockbook', label: 'Blockbook' }, { id: 'bitcore', label: 'Bitcore' }], kind);
                   if (v) setKind(v as NodeKind);
                 }} />
               </Section>

@@ -60,7 +60,7 @@ export interface AddressSummary {
 export type FeeTable = Record<number, number>;
 
 export interface Indexer {
-  readonly kind: 'esplora' | 'blockbook' | 'blockchair' | 'blockcypher';
+  readonly kind: 'esplora' | 'blockbook' | 'blockchair' | 'blockcypher' | 'bitcore';
   readonly url: string;
   tip(): Promise<{ height: number; hash?: string }>;
   address(addr: string): Promise<AddressSummary>;
@@ -296,6 +296,118 @@ export class BlockbookIndexer implements Indexer {
   }
 }
 
+// ------------------------------------------------------------------ Bitcore --
+
+/**
+ * BitPay's Bitcore node API (https://api.bitcore.io/api/<COIN>/mainnet), reachable over Tor. An address is a
+ * list of "coins" (outputs paid to it, with the spending transaction); spentHeight -2 = unspent, mintHeight < 0 =
+ * in the mempool.
+ */
+export class BitcoreIndexer implements Indexer {
+  readonly kind = 'bitcore' as const;
+  readonly url: string;
+  readonly opts: HttpOptions;
+
+  constructor(url: string, opts: HttpOptions = {}) {
+    this.url = trim(url);
+    this.opts = { purpose: 'bitcore', ...opts };
+  }
+
+  #get<T>(path: string): Promise<T> {
+    return getJson<T>(`${this.url}${path}`, this.opts);
+  }
+
+  async tip() {
+    const r = await this.#get<any>('/block/tip');
+    return { height: Number(r.height), hash: r.hash };
+  }
+
+  async #coins(addr: string): Promise<any[]> {
+    const r = await this.#get<any[]>(`/address/${addr}/txs${qs({ limit: 1000 })}`);
+    return Array.isArray(r) ? r : [];
+  }
+
+  async address(addr: string): Promise<AddressSummary> {
+    const coins = await this.#coins(addr);
+    const txids = new Set<string>();
+    let confirmed = 0n;
+    let unconfirmed = 0n;
+    for (const c of coins) {
+      if (c.mintTxid) txids.add(c.mintTxid);
+      if (c.spentTxid) txids.add(c.spentTxid);
+      const unspent = !c.spentTxid || Number(c.spentHeight) === -2;
+      if (!unspent) continue;
+      if (Number(c.mintHeight) >= 0) confirmed += big(c.value);
+      else unconfirmed += big(c.value);
+    }
+    return { address: addr, txCount: txids.size, confirmed, unconfirmed };
+  }
+
+  #parse(t: any): ChainTx {
+    const ins: any[] = t.coins?.inputs ?? [];
+    const outs: any[] = t.coins?.outputs ?? [];
+    const time = Date.parse(t.blockTimeNormalized ?? t.blockTime ?? '');
+    return {
+      txid: t.txid,
+      height: Number(t.blockHeight) > 0 ? Number(t.blockHeight) : 0,
+      time: Number.isFinite(time) ? Math.floor(time / 1000) : Math.floor(Date.now() / 1000),
+      fee: t.fee !== undefined ? big(t.fee) : undefined,
+      size: t.size,
+      vsize: t.size,
+      inputs: ins.map((i) => ({ txid: i.mintTxid, vout: Number(i.mintIndex), address: i.address && i.address !== 'false' ? i.address : undefined, value: big(i.value), sequence: i.sequenceNumber })),
+      outputs: outs.sort((a, b) => Number(a.mintIndex) - Number(b.mintIndex)).map((o) => ({ n: Number(o.mintIndex), address: o.address && o.address !== 'false' ? o.address : undefined, value: big(o.value), script: o.script })),
+    };
+  }
+
+  async addressTxs(addr: string): Promise<ChainTx[]> {
+    const coins = await this.#coins(addr);
+    const txids = [...new Set(coins.flatMap((c) => [c.mintTxid, c.spentTxid]).filter((x): x is string => !!x))];
+    const out: ChainTx[] = [];
+    for (let i = 0; i < txids.length; i += 4) {
+      const got = await Promise.all(txids.slice(i, i + 4).map((id) => this.tx(id).catch(() => null)));
+      for (const t of got) if (t) out.push(t);
+    }
+    return out.sort((a, b) => (a.height === 0 ? -1 : b.height === 0 ? 1 : b.height - a.height));
+  }
+
+  async utxos(addr: string): Promise<Utxo[]> {
+    const r = await this.#get<any[]>(`/address/${addr}${qs({ unspent: true, limit: 1000 })}`);
+    return (Array.isArray(r) ? r : []).map((c) => ({ txid: c.mintTxid, vout: Number(c.mintIndex), value: big(c.value), height: Number(c.mintHeight) > 0 ? Number(c.mintHeight) : 0, address: addr }));
+  }
+
+  async tx(txid: string) {
+    return this.#parse(await this.#get<any>(`/tx/${txid}/populated`));
+  }
+
+  async txHex(_txid: string): Promise<string> {
+    throw new Error('Raw transactions are not available from this indexer');
+  }
+
+  async broadcast(hex: string) {
+    const res = await request(`${this.url}/tx/send`, JSON.stringify({ rawTx: hex }), { ...this.opts, method: 'POST', headers: { 'Content-Type': 'application/json' }, retries: 0, okStatuses: [400, 500] });
+    const body = text(res);
+    let j: any = null;
+    try {
+      j = JSON.parse(body);
+    } catch { /* plain-text error */ }
+    if (!j?.txid) throw new Error(j?.error ?? j?.message ?? (body || 'broadcast failed'));
+    return j.txid as string;
+  }
+
+  /** estimates in coin/kB, as sat/byte */
+  async fees(): Promise<FeeTable> {
+    const out: FeeTable = {};
+    await Promise.all([1, 3, 6, 144].map(async (target) => {
+      try {
+        const r = await this.#get<any>(`/fee/${target}`);
+        const v = Number(r?.feerate);
+        if (v > 0) out[target] = (v * 1e8) / 1000;
+      } catch { /* skip */ }
+    }));
+    return out;
+  }
+}
+
 // --------------------------------------------------------------- Blockchair --
 
 export class BlockchairIndexer implements Indexer {
@@ -389,6 +501,8 @@ export function makeIndexer(c: IndexerConfig): Indexer {
       return new BlockbookIndexer(c.url, opts);
     case 'blockchair':
       return new BlockchairIndexer(c.url, c.chain ?? 'bitcoin', opts);
+    case 'bitcore':
+      return new BitcoreIndexer(c.url, opts);
     default:
       throw new Error(`Unsupported indexer ${c.kind}`);
   }

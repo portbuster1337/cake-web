@@ -7,7 +7,7 @@
 import { signal } from '@preact/signals';
 import type { WalletType } from '../coins/types.ts';
 
-export type NodeKind = 'esplora' | 'blockbook' | 'blockchair' | 'monerod' | 'evm' | 'solana' | 'tron' | 'nano' | 'nanoPow' | 'decred' | 'zcash' | 'zano';
+export type NodeKind = 'esplora' | 'blockbook' | 'blockchair' | 'bitcore' | 'monerod' | 'evm' | 'solana' | 'tron' | 'nano' | 'nanoPow' | 'decred' | 'zcash' | 'zano';
 
 export interface Node {
   id: string;
@@ -54,8 +54,10 @@ export const BUILTIN_NODES: Node[] = [
   B('bitcoinCash', 'blockbook', 'https://bch1.trezor.io', { label: 'Trezor' }),
   B('bitcoinCash', 'blockchair', 'https://api.blockchair.com', { chain: 'bitcoin-cash', label: 'Blockchair' }),
   // Dogecoin
-  B('dogecoin', 'blockbook', 'https://doge1.trezor.io', { isDefault: true, label: 'Trezor' }),
+  // Trezor's Blockbook refuses Tor exits (HTTP 403) and Blockchair blocks them often (HTTP 430): Bitcore is the default
+  B('dogecoin', 'bitcore', 'https://api.bitcore.io/api/DOGE/mainnet', { isDefault: true, label: 'Bitcore' }),
   B('dogecoin', 'blockchair', 'https://api.blockchair.com', { chain: 'dogecoin', label: 'Blockchair' }),
+  B('dogecoin', 'blockbook', 'https://doge1.trezor.io', { label: 'Trezor' }),
   // EVM (assets/*_node_list.yml, keyless entries)
   B('ethereum', 'evm', 'https://ethereum-rpc.publicnode.com', { isDefault: true }),
   B('ethereum', 'evm', 'https://eth.llamarpc.com'),
