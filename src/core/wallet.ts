@@ -251,6 +251,8 @@ export interface WalletInfo {
   /** seed type used: electrum / bip39 / legacy / polyseed / nano ... */
   seedType?: string;
   showIntroCakePayCard?: boolean;
+  /** WalletInfo.showSeedBackupReminder: a new recovery phrase not verified or dismissed yet */
+  showSeedBackupReminder?: boolean;
   /** user hid this wallet's balance etc. */
   sortOrder?: number;
   isWatchOnly?: boolean;

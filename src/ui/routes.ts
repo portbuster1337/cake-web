@@ -56,6 +56,8 @@ export const Routes = {
   restoreWalletType: '/restore_wallet_type',
   restoreWallet: '/restore_wallet',
   preSeedPage: '/pre_seed_page',
+  seedBackupReminderPage: '/seed_backup_reminder_page',
+  dismissSeedVerification: '/dismiss_seed_verification',
   transactionSuccessPage: '/transaction_success_info_page',
   backup: '/backup',
   editBackupPassword: '/edit_backup_passowrd',

@@ -165,7 +165,10 @@ function WalletHome({ w }: { w: WalletBase }) {
   const design = designFromStyle(s.cardDesigns[cardStyleKey(w)], cur.key);
   const txs = w.transactions.value;
   const pending = ADDITIONAL_BALANCE.has(w.type) ? bal.pending ?? 0n : 0n;
-  const showReminder = !s.seedBackedUp[w.id] && !!w.seed && bal.full > 0n;
+  // shouldShowSeedBackupReminder: a new recovery phrase not backed up yet, and some balance (any asset)
+  const reminderFlag = (w.info as { showSeedBackupReminder?: boolean; isRecovery?: boolean }).showSeedBackupReminder ?? !(w.info as { isRecovery?: boolean }).isRecovery;
+  const hasBalance = Object.values(w.balances.value).some((b) => b.available > 0n || b.full > 0n || (b.pending ?? 0n) > 0n);
+  const showReminder = reminderFlag && !s.seedBackedUp[w.id] && !!w.seed && hasBalance;
   const toggleHidden = () => {
     updateSettings((x) => ({ balanceDisplayMode: x.balanceDisplayMode === 'hiddenBalance' ? 'availableBalance' : 'hiddenBalance', hiddenBalanceToggles: x.hiddenBalanceToggles + 1 }));
   };
@@ -197,7 +200,7 @@ function WalletHome({ w }: { w: WalletBase }) {
               </button>
             )}
             {showReminder && (
-              <button type="button" class="rowx gap12" onClick={() => nav.push(Routes.preSeedPage, { walletId: w.id, reminder: true })} style={{ marginTop: '24px', width: '100%', background: 'var(--surface-container)', borderRadius: '20px', border: 0, padding: '12px', color: 'var(--on-surface)', cursor: 'pointer', textAlign: 'start' }}>
+              <button type="button" class="rowx gap12" onClick={() => nav.push(Routes.seedBackupReminderPage, { walletId: w.id })} id="seed_backup_reminder_card" style={{ marginTop: '24px', width: '100%', background: 'var(--surface-container)', borderRadius: '20px', border: 0, padding: '12px', color: 'var(--on-surface)', cursor: 'pointer', textAlign: 'start' }}>
                 <Icon src="key.svg" size={24} color="var(--primary)" />
                 <span class="grow col" style={{ gap: '4px' }}>
                   <span style={{ fontWeight: 500 }}>{t('back_up_recovery_phrase')}</span>

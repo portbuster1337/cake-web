@@ -8,11 +8,12 @@ import { nav } from '../nav.ts';
 import { registerRoute, Routes } from '../routes.ts';
 import { Button, Field, Icon, Img, MIcon, Page, Segmented, ToggleRow, Section, Row, copyText } from '../components/core.tsx';
 import { showAlert, showSheet } from '../components/overlays.tsx';
+import { requireAuth } from '../components/auth.tsx';
 import { currentPalette } from '../theme/themes.ts';
 import { AVAILABLE_WALLET_TYPES, WALLET_TYPE_NAME, WALLET_TYPE_TICKER, walletCurrency, type WalletType } from '../../coins/types.ts';
 import { coinModule, isCoinSupported } from '../../coins/module.ts';
 import { generateName } from '../../core/names.ts';
-import { createWallet, openWallet, walletNameTaken, getSecrets, walletInfos } from '../../app/app.ts';
+import { createWallet, currentWallet, openWallet, walletNameTaken, getSecrets, walletInfos, saveWalletInfo } from '../../app/app.ts';
 import { settings, updateSettings, type FiatApiMode, type ExchangeApiMode } from '../../app/settings.ts';
 import type { WalletInfo } from '../../core/wallet.ts';
 import { isBip39Wallet, joinableGroups } from '../../app/groups.ts';
@@ -145,7 +146,10 @@ function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; 
     }
     setBusy(true);
     try {
-      const info = await createWallet(type, { name: n, seedType: args.mnemonic ? 'bip39' : draft.seedType, passphrase: draft.passphrase, wordCount: draft.wordCount, mnemonic: args.mnemonic });
+      const created = await createWallet(type, { name: n, seedType: args.mnemonic ? 'bip39' : draft.seedType, passphrase: draft.passphrase, wordCount: draft.wordCount, mnemonic: args.mnemonic });
+      // WalletNewVM: a new recovery phrase is to be backed up (a group's one is already)
+      const info = { ...created, showSeedBackupReminder: !args.mnemonic };
+      await saveWalletInfo(info);
       await openWallet(info.id);
       // a wallet in a group: its recovery phrase is the group's, already known
       if (args.isChildWallet) nav.push(Routes.walletGroupExistingSeedDescriptionPage, { walletId: info.id });
@@ -400,8 +404,74 @@ function SkipSeedVerificationPage({ args }: { args: { walletId: string } }) {
 }
 
 export function finishOnboarding(walletId: string, verified: boolean) {
-  if (verified) updateSettings((s) => ({ seedBackedUp: { ...s.seedBackedUp, [walletId]: true } }));
+  if (verified) {
+    updateSettings((s) => ({ seedBackedUp: { ...s.seedBackedUp, [walletId]: true } }));
+    // WalletSeedViewModel.markSeedVerified
+    void clearSeedBackupReminder(walletId);
+  }
   nav.reset(Routes.dashboard);
+}
+
+/** WalletInfo.clearSeedBackupReminder */
+export async function clearSeedBackupReminder(walletId: string): Promise<void> {
+  const info = walletInfos.value.find((w) => w.id === walletId);
+  if (info && info.showSeedBackupReminder !== false) await saveWalletInfo({ ...info, showSeedBackupReminder: false });
+  const cur = currentWallet.value;
+  if (cur?.id === walletId) (cur.info as WalletInfo).showSeedBackupReminder = false;
+}
+
+/** SeedBackupReminderPage: the recovery phrase (after the PIN), or dismiss the reminder */
+function SeedBackupReminderPage({ args }: { args: { walletId: string } }) {
+  const dark = currentPalette().isDark;
+  return (
+    <Page
+      id="seed_backup_reminder_page"
+      footer={
+        <>
+          <Button id="seed_backup_reminder_page_button_key" onClick={async () => {
+            if (await requireAuth({ always: true, totp: settings.value.shouldRequireTOTP2FAForAllSecurityAndBackupSettings })) nav.push(Routes.seed, { walletId: args.walletId, isNewWalletCreated: false });
+          }}>{t('show_recovery_phrase')}</Button>
+          <button type="button" class="link-btn" id="seed_backup_reminder_page_dismiss_button_key" onClick={() => nav.push(Routes.dismissSeedVerification, { walletId: args.walletId })}>{t('dismiss_this_step')}</button>
+        </>
+      }
+    >
+      <div class="col" style={{ alignItems: 'center', paddingTop: '24px' }}>
+        <Img src={`assets/new-ui/hero/seed_shield_${dark ? 'dark' : 'light'}.svg`} w={200} h={175} />
+        <div style={{ fontSize: '18px', fontWeight: 600, marginTop: '24px', textAlign: 'center', letterSpacing: '-0.09px' }}>{t('recovery_phrase_intro_title')}</div>
+        <div class="muted center" style={{ marginTop: '12px' }}>{t('recovery_phrase_intro_description')}</div>
+      </div>
+    </Page>
+  );
+}
+
+/** DismissSeedVerificationPage */
+function DismissSeedVerificationPage({ args }: { args: { walletId: string } }) {
+  return (
+    <Page
+      id="dismiss_seed_verification_page"
+      footer={
+        <>
+          <Button id="dismiss_seed_verification_page_confirm_button_key" onClick={async () => {
+            await clearSeedBackupReminder(args.walletId);
+            nav.popUntil(Routes.dashboard);
+          }}>{t('dismiss_verification_confirm')}</Button>
+          <Button secondary id="dismiss_seed_verification_page_back_button_key" onClick={() => nav.pop()}>{t('seed_alert_back')}</Button>
+        </>
+      }
+    >
+      <div class="col" style={{ alignItems: 'center', paddingTop: '24px', maxWidth: '295px', margin: '0 auto', textAlign: 'center' }}>
+        <Img src="assets/new-ui/warning_triangle.svg" w={125} h={112} />
+        <div style={{ height: '48px' }} />
+        <div style={{ fontSize: '18px', fontWeight: 600 }}>{t('dismiss_verification_title')}</div>
+        <div style={{ height: '24px' }} />
+        <div class="muted">
+          {t('dismiss_verification_description')}
+          <br />
+          <b style={{ color: 'var(--on-surface)' }}>{t('seed_display_path')}</b>
+        </div>
+      </div>
+    </Page>
+  );
 }
 
 /** WalletSeedPage */
@@ -430,11 +500,9 @@ function WalletSeedPage({ args }: { args: { walletId: string; isNewWalletCreated
       footer={
         <div class="rowx gap12">
           <Button secondary onClick={() => saveSeedFile(info?.name ?? 'wallet', seed, pass)}>{t('save')}</Button>
-          {args.isNewWalletCreated !== false && (
-            <Button id="wallet_seed_page_verify_seed_button_key" onClick={() => nav.push(Routes.walletSeedVerificationPage, { walletId: args.walletId, seed })}>
-              {t('verify_phrase')}
-            </Button>
-          )}
+          <Button id="wallet_seed_page_verify_seed_button_key" onClick={() => nav.push(Routes.walletSeedVerificationPage, { walletId: args.walletId, seed })}>
+            {t('verify_phrase')}
+          </Button>
         </div>
       }
     >
@@ -711,3 +779,5 @@ export { coinModule };
 registerRoute(Routes.walletGroupDescription, WalletGroupDescriptionPage);
 registerRoute(Routes.walletGroupsDisplayPage, WalletGroupsDisplayPage);
 registerRoute(Routes.walletGroupExistingSeedDescriptionPage, WalletGroupExistingSeedPage);
+registerRoute(Routes.seedBackupReminderPage, SeedBackupReminderPage);
+registerRoute(Routes.dismissSeedVerification, DismissSeedVerificationPage);
