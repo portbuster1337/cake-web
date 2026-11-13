@@ -128,7 +128,8 @@ export interface Settings {
   /** wallet ids grouped by user */
   walletGroupNames: Record<string, string>;
   /** card designs per wallet/account */
-  cardDesigns: Record<string, { gradient?: string; icon?: string; design?: string }>;
+  /** balance card styles (BalanceCardStyleSettings), keyed "<walletId>:<accountIndex>" */
+  cardDesigns: Record<string, { gradientIndex: number; useSpecialDesign: boolean; iconStyleIndex: number; isGradientOnly: boolean }>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

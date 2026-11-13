@@ -11,7 +11,7 @@ import { isSynced, syncProgress, syncStatusTitle, type WalletBase } from '../../
 import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl } from '../../../coins/types.ts';
-import { BalanceCard, CardChip, designFor } from './cards.tsx';
+import { BalanceCard, CardChip, cardStyleKey, designFromStyle } from './cards.tsx';
 import { HistoryList } from './history.tsx';
 import { nav } from '../../nav.ts';
 import { Routes } from '../../routes.ts';
@@ -158,7 +158,7 @@ function WalletHome({ w }: { w: WalletBase }) {
     const fiat = fiatValue(Number(formatFixed(shown, cur.decimals)), api);
     fiatStr = s.fiatApiMode === 'disabled' ? undefined : `${s.fiatCurrency} ${formatFiatAmount(fiat ?? 0)}`;
   }
-  const design = designFor(cur.key, s.cardDesigns[w.id]);
+  const design = designFromStyle(s.cardDesigns[cardStyleKey(w)], cur.key);
   const txs = w.transactions.value;
   const pending = ADDITIONAL_BALANCE.has(w.type) ? bal.pending ?? 0n : 0n;
   const showReminder = !s.seedBackedUp[w.id] && !!w.seed && bal.full > 0n;
@@ -180,7 +180,7 @@ function WalletHome({ w }: { w: WalletBase }) {
               fiat={fiatStr}
               hidden={hidden}
               onLongPress={toggleHidden}
-              onMenu={() => nav.push('/card_customizer', { walletId: w.id })}
+              onMenu={() => nav.push(Routes.cardCustomizer)}
               chips={!s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => nav.push(Routes.buySellPage)} /> : undefined}
             />
             {hidden && s.hiddenBalanceToggles < 10 && <div class="muted" style={{ marginTop: '12px' }}>{t('long_press_show_balance')}</div>}

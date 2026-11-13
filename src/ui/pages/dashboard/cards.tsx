@@ -1,44 +1,38 @@
 // Balance cards (lib/new-ui/widgets/coins_page/cards/*, cw_core/lib/card_design.dart).
 
 import type { ComponentChildren } from 'preact';
-import { Icon, MIcon } from '../../components/core.tsx';
+import { Icon, MIcon, asset } from '../../components/core.tsx';
 
-type Combo = 'light' | 'dark' | 'black';
+export type Combo = 'light' | 'dark' | 'black';
+export type BackgroundType = 'gradientOnly' | 'svgIcon' | 'svgFull';
 
-export interface CardDesign {
+export interface Gradient {
   from: string;
   to: string;
-  bg?: string;
-  combo: Combo;
 }
 
-/** forCurrencySpecial (card_design.dart:173-329) */
-export const SPECIAL_DESIGNS: Record<string, CardDesign> = {
-  btc: { from: '#FFBF00', to: '#FF6A00', bg: 'bitcoin.svg', combo: 'dark' },
-  btcln: { from: '#FFBF00', to: '#FF6A00', bg: 'lightning.svg', combo: 'dark' },
-  eth: { from: '#6259FF', to: '#3B20E6', bg: 'ethereum.svg', combo: 'light' },
-  xmr: { from: '#FF5900', to: '#E62E00', bg: 'monero.svg', combo: 'dark' },
-  ltc: { from: '#2145BF', to: '#072071', bg: 'litecoin.svg', combo: 'light' },
-  trx: { from: '#FF1313', to: '#B40000', bg: 'tron.svg', combo: 'light' },
-  sol: { from: '#4701AA', to: '#19004B', bg: 'solana.svg', combo: 'light' },
-  bch: { from: '#36DA4C', to: '#008D57', bg: 'bitcoin-cash.svg', combo: 'dark' },
-  wow: { from: '#FF6CD3', to: '#F200A9', bg: 'wownero.svg', combo: 'dark' },
-  doge: { from: '#CBA818', to: '#885D00', bg: 'dogecoin.svg', combo: 'dark' },
-  nano: { from: '#209CE9', to: '#0073CB', bg: 'nano.svg', combo: 'dark' },
-  maticpoly: { from: '#863FE3', to: '#59098E', bg: 'polygon.svg', combo: 'light' },
-  dcr: { from: '#2871FF', to: '#0057FF', bg: 'decred.svg', combo: 'light' },
-  zano: { from: '#0004B4', to: '#170069', bg: 'zano.svg', combo: 'black' },
-  baseEth: { from: '#003CFF', to: '#000087', bg: 'base.svg', combo: 'light' },
-  arbEth: { from: '#173F76', to: '#031A39', bg: 'arbitrum.svg', combo: 'light' },
-  zec: { from: '#F6C527', to: '#CD8C00', bg: 'zcash.svg', combo: 'dark' },
-  bnb: { from: '#603000', to: '#F0B90B', bg: 'bnb.svg', combo: 'light' },
-  robEth: { from: '#BDFE00', to: '#85BE00', bg: 'robinhood.svg', combo: 'dark' },
-};
+/** CardDesign (cw_core/lib/card_design.dart) */
+export interface CardDesign extends Gradient {
+  type: BackgroundType;
+  /** svgIcon: the corner icon; svgFull: the whole-card artwork (asset paths) */
+  image: string;
+  combo: Combo;
+  preColored?: boolean;
+}
 
-export const GENERIC_DESIGN: CardDesign = { from: '#4EBEFF', to: '#1D78FF', combo: 'dark' };
+/** BalanceCardStyleSettings: what the card customizer stores per wallet (and account) */
+export interface CardStyle {
+  gradientIndex: number;
+  useSpecialDesign: boolean;
+  iconStyleIndex: number;
+  isGradientOnly: boolean;
+}
 
-/** card_design.dart gradients for the customizer */
-export const CARD_GRADIENTS: { id: string; from: string; to: string; combo: Combo }[] = [
+const BLANK = 'assets/new-ui/blank.svg';
+const BLUE: Gradient = { from: '#4EBEFF', to: '#1D78FF' };
+
+/** CardDesign.allGradients and preferredColorCombinations */
+export const CARD_GRADIENTS: (Gradient & { id: string; combo: Combo })[] = [
   { id: 'orange', from: '#FF7C02', to: '#FF5602', combo: 'dark' },
   { id: 'yellow', from: '#FFD000', to: '#FFAA00', combo: 'dark' },
   { id: 'green', from: '#5AA438', to: '#5AA438', combo: 'light' },
@@ -51,18 +45,154 @@ export const CARD_GRADIENTS: { id: string; from: string; to: string; combo: Comb
   { id: 'black', from: '#2A2A2A', to: '#000000', combo: 'black' },
 ];
 
-const COMBOS: Record<Combo, { text: string; secondary: string; chip: string }> = {
+/** genericDefault: blue, blank icon */
+export const GENERIC_DESIGN: CardDesign = { ...BLUE, type: 'svgIcon', image: BLANK, combo: 'dark' };
+export const GRADIENT_ONLY_DESIGN: CardDesign = { ...BLUE, type: 'gradientOnly', image: BLANK, combo: 'dark' };
+
+/** forCurrencySpecial (card_design.dart:173-329): gradient, artwork in balance_card_backgrounds, text colors */
+const SPECIAL: Record<string, [string, string, string, Combo]> = {
+  btc: ['#FFBF00', '#FF6A00', 'bitcoin.svg', 'dark'],
+  btcln: ['#FFBF00', '#FF6A00', 'lightning.svg', 'dark'],
+  eth: ['#6259FF', '#3B20E6', 'ethereum.svg', 'light'],
+  xmr: ['#FF5900', '#E62E00', 'monero.svg', 'dark'],
+  ltc: ['#2145BF', '#072071', 'litecoin.svg', 'light'],
+  trx: ['#FF1313', '#B40000', 'tron.svg', 'light'],
+  sol: ['#4701AA', '#19004B', 'solana.svg', 'light'],
+  bch: ['#36DA4C', '#008D57', 'bitcoin-cash.svg', 'dark'],
+  wow: ['#FF6CD3', '#F200A9', 'wownero.svg', 'dark'],
+  doge: ['#CBA818', '#885D00', 'dogecoin.svg', 'dark'],
+  nano: ['#209CE9', '#0073CB', 'nano.svg', 'dark'],
+  maticpoly: ['#863FE3', '#59098E', 'polygon.svg', 'light'],
+  dcr: ['#2871FF', '#0057FF', 'decred.svg', 'light'],
+  zano: ['#0004B4', '#170069', 'zano.svg', 'black'],
+  baseEth: ['#003CFF', '#000087', 'base.svg', 'light'],
+  arbEth: ['#173F76', '#031A39', 'arbitrum.svg', 'light'],
+  zec: ['#F6C527', '#CD8C00', 'zcash.svg', 'dark'],
+  bnb: ['#603000', '#F0B90B', 'bnb.svg', 'light'],
+  robEth: ['#BDFE00', '#85BE00', 'robinhood.svg', 'dark'],
+};
+
+/** iconDesignsForCurrencies: balance_card_icons/<name>.svg */
+const ICON_DESIGN: Record<string, string> = {
+  xmr: 'monero', btc: 'bitcoin', eth: 'ethereum', ltc: 'litecoin', btcln: 'lightning', trx: 'tron', sol: 'solana', maticpoly: 'polygon', baseEth: 'base', bch: 'bitcoin_cash',
+  wow: 'wownero', doge: 'dogecoin', nano: 'nano', zano: 'zano', arbEth: 'arbitrum', zec: 'zcash', dcr: 'decred', bnb: 'bnb', robEth: 'robinhood',
+};
+
+/** _iconNames: ticker, long name, and the files that differ from them */
+const ICON_NAMES: Record<string, { ticker: string; longName: string; outline?: string; chain?: string; og?: string }> = {
+  arbEth: { ticker: 'arb', longName: 'arbitrum' },
+  baseEth: { ticker: 'base', longName: 'base', chain: 'base_icon' },
+  robEth: { ticker: 'rob', longName: 'robinhood' },
+  bch: { ticker: 'bch', longName: 'bitcoin_cash', chain: 'bitcoin-cash' },
+  btc: { ticker: 'btc', longName: 'bitcoin', outline: 'BTC' },
+  bnb: { ticker: 'bnb', longName: 'bnb' },
+  dcr: { ticker: 'dcr', longName: 'decred' },
+  doge: { ticker: 'doge', longName: 'dogecoin' },
+  eth: { ticker: 'eth', longName: 'ethereum' },
+  btcln: { ticker: 'ln', longName: 'lightning' },
+  ltc: { ticker: 'ltc', longName: 'litecoin' },
+  xmr: { ticker: 'xmr', longName: 'monero', og: 'assets/images/xmr-og.webp' },
+  nano: { ticker: 'xno', longName: 'nano' },
+  maticpoly: { ticker: 'pol', longName: 'polygon' },
+  sol: { ticker: 'sol', longName: 'solana' },
+  trx: { ticker: 'trx', longName: 'tron', og: 'assets/new-ui/card_icons/og_icons/tron-og.svg' },
+  zano: { ticker: 'zano', longName: 'zano' },
+  zec: { ticker: 'zec', longName: 'zcash' },
+};
+
+export function specialDesign(cur: string): CardDesign | undefined {
+  const x = SPECIAL[cur];
+  return x ? { from: x[0], to: x[1], type: 'svgFull', image: `assets/new-ui/balance_card_backgrounds/${x[2]}`, combo: x[3] } : undefined;
+}
+
+/** forCurrencyIcon: the classic icon on a black gradient (always recolored before use) */
+export function iconDesign(cur: string): CardDesign {
+  const n = ICON_DESIGN[cur];
+  return n ? { from: '#000000', to: '#000000', type: 'svgIcon', image: `assets/new-ui/balance_card_icons/${n}.svg`, combo: 'dark' } : GENERIC_DESIGN;
+}
+
+/** iconPathsForWalletType: symbol, outline, classic, chain, OG, Cake */
+export function iconPaths(cur: string): { path: string; preColored: boolean }[] {
+  const n = ICON_NAMES[cur];
+  if (!n) return [];
+  return [
+    { path: `assets/new-ui/card_icons/symbol_icons/${n.ticker}-symbol.svg`, preColored: false },
+    { path: `assets/new-ui/card_icons/outline_icons/${n.outline ?? n.ticker}-outline.svg`, preColored: false },
+    { path: `assets/new-ui/balance_card_icons/${n.longName}.svg`, preColored: false },
+    { path: `assets/new-ui/card_icons/chain_icons/${n.chain ?? n.longName}.svg`, preColored: true },
+    { path: n.og ?? `assets/new-ui/card_icons/og_icons/${n.ticker}-og.svg`, preColored: true },
+    { path: 'assets/new-ui/balance_card_icons/cake-card-icon.svg', preColored: false },
+  ];
+}
+
+const sameGradient = (a: Gradient, b: Gradient) => a.from.toLowerCase() === b.from.toLowerCase() && a.to.toLowerCase() === b.to.toLowerCase();
+
+export function preferredCombo(g: Gradient): Combo | undefined {
+  return CARD_GRADIENTS.find((x) => sameGradient(x, g))?.combo;
+}
+
+export const withGradient = (d: CardDesign, g: Gradient): CardDesign => ({ ...d, from: g.from, to: g.to, combo: preferredCombo(g) ?? d.combo });
+export const withGradientAndCombo = (d: CardDesign, g: Gradient, combo: Combo): CardDesign => ({ ...d, from: g.from, to: g.to, combo });
+export const withIcon = (d: CardDesign, icon: { path: string; preColored: boolean }): CardDesign => ({ ...d, image: icon.path, preColored: icon.preColored });
+
+function withIconStyle(d: CardDesign, index: number, cur: string): CardDesign {
+  const p = iconPaths(cur);
+  return index >= 0 && index < p.length ? withIcon(d, p[index]) : d;
+}
+
+/** the customizer's colors: the ten gradients, then the coin's own */
+export function availableGradients(cur: string): Gradient[] {
+  const sp = specialDesign(cur);
+  return [...CARD_GRADIENTS.map(({ from, to }) => ({ from, to })), ...(sp ? [{ from: sp.from, to: sp.to }] : [])];
+}
+
+/** gradientForStoredIndex */
+function gradientForIndex(i: number, cur: string): Gradient {
+  if (i >= 0 && i < CARD_GRADIENTS.length) return CARD_GRADIENTS[i];
+  const sp = specialDesign(cur);
+  if (i === CARD_GRADIENTS.length && sp) return sp;
+  return BLUE;
+}
+
+export function isCardStyle(x: unknown): x is CardStyle {
+  return !!x && typeof (x as CardStyle).gradientIndex === 'number';
+}
+
+/** CardDesign.fromStyleSettings */
+export function designFromStyle(style: unknown, cur: string): CardDesign {
+  const special = specialDesign(cur);
+  if (!isCardStyle(style)) return special ?? GENERIC_DESIGN;
+  if (style.isGradientOnly) {
+    const g = gradientForIndex(style.gradientIndex, cur);
+    return withGradientAndCombo(GRADIENT_ONLY_DESIGN, g, preferredCombo(g) ?? special?.combo ?? GRADIENT_ONLY_DESIGN.combo);
+  }
+  if (style.useSpecialDesign && style.gradientIndex !== -1) return withGradient(special ?? GENERIC_DESIGN, gradientForIndex(style.gradientIndex, cur));
+  if (!style.useSpecialDesign && style.gradientIndex === -1) {
+    const sp = special ?? GENERIC_DESIGN;
+    return withIconStyle(withGradientAndCombo(iconDesign(cur), sp, sp.combo), style.iconStyleIndex, cur);
+  }
+  if (style.useSpecialDesign) return special ?? GENERIC_DESIGN;
+  const icon = iconDesign(cur);
+  const g = gradientForIndex(style.gradientIndex, cur);
+  return withIconStyle(withGradientAndCombo(icon, g, preferredCombo(g) ?? special?.combo ?? icon.combo), style.iconStyleIndex, cur);
+}
+
+/** the card style key: per wallet, and per account for wallets with accounts (accountIndex -1 otherwise) */
+export function cardStyleKey(w: { id: string; type: string; currentAccount: { value: number } }): string {
+  return `${w.id}:${w.type === 'monero' || w.type === 'wownero' ? w.currentAccount.value : -1}`;
+}
+
+export const COMBOS: Record<Combo, { text: string; secondary: string; chip: string }> = {
   light: { text: 'rgba(255,255,255,.784)', secondary: 'rgba(255,255,255,.54)', chip: 'rgba(0,0,0,.784)' },
   dark: { text: 'rgba(0,0,0,.784)', secondary: 'rgba(0,0,0,.45)', chip: 'rgba(255,255,255,.784)' },
   black: { text: 'rgba(255,255,255,.784)', secondary: 'rgba(255,255,255,.54)', chip: 'rgba(255,255,255,.784)' },
 };
 
-export function designFor(currencyKey: string, custom?: { gradient?: string }): CardDesign {
-  if (custom?.gradient) {
-    const g = CARD_GRADIENTS.find((x) => x.id === custom.gradient);
-    if (g) return { from: g.from, to: g.to, combo: g.combo };
-  }
-  return SPECIAL_DESIGNS[currencyKey] ?? GENERIC_DESIGN;
+/** the artwork of a card: the full background (svgFull) or the corner icon (svgIcon, 15 % of the width, at 33 % unless pre-colored) */
+export function CardArtwork({ design }: { design: CardDesign }) {
+  if (design.type === 'svgFull') return <img src={asset(design.image)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', transition: 'opacity 300ms' }} draggable={false} />;
+  if (design.type === 'svgIcon' && design.image !== BLANK) return <img src={asset(design.image)} alt="" style={{ position: 'absolute', right: '5%', bottom: '5%', width: '15%', aspectRatio: '1', objectFit: 'contain', opacity: design.preColored ? 1 : 0.33 }} draggable={false} />;
+  return null;
 }
 
 export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chips, onLongPress, onMenu, hidden, width = 380 }: { design: CardDesign; label: string; labelDim?: boolean; amount: string; asset: string; fiat?: string; chips?: ComponentChildren; onLongPress?: () => void; onMenu?: () => void; hidden?: boolean; width?: number }) {
@@ -92,13 +222,14 @@ export function BalanceCard({ design, label, labelDim, amount, asset, fiat, chip
         borderRadius: '20px',
         border: '1px solid rgba(255,255,255,.27)',
         background: `linear-gradient(to bottom, ${design.from}, ${design.to})`,
+        transition: 'background 300ms',
         overflow: 'hidden',
         color: c.text,
         userSelect: 'none',
         boxShadow: '0 8px 24px rgba(0,0,0,.25)',
       }}
     >
-      {design.bg && <img src={`./cake/new-ui/balance_card_backgrounds/${design.bg}`} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} draggable={false} />}
+      <CardArtwork design={design} />
       <div style={{ position: 'absolute', inset: 0, padding: '5%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         <div style={{ fontSize: '16px', fontWeight: 500, opacity: labelDim ? 0.5 : 1 }} id="balance_card_label">{label}</div>
         <div>

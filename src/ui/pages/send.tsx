@@ -317,7 +317,7 @@ function AssetRow({ a, sel, onClick }: { a: AssetInfo; sel: boolean; onClick: ()
   );
 }
 
-function pickFee(w: WalletBase, current: string, custom: number): Promise<{ priority: string; custom?: number } | undefined> {
+export function pickFee(w: WalletBase, current: string, custom: number): Promise<{ priority: string; custom?: number } | undefined> {
   return showSheet((close) => <FeePicker w={w} current={current} custom={custom} close={close} />);
 }
 

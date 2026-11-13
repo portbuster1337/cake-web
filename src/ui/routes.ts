@@ -94,6 +94,7 @@ export const Routes = {
   homeSettings: '/home_settings',
   editToken: '/edit_token',
   walletAccountsPage: '/wallet_accounts_page',
+  cardCustomizer: '/card_customizer',
   manageNodes: '/manage_nodes',
   managePowNodes: '/manage_pow_nodes',
   walletConnectConnectionsListing: '/wallet-connect-connections-listing',
