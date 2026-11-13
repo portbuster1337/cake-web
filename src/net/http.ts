@@ -52,7 +52,8 @@ export async function request(url: string, body: Uint8Array | string | undefined
       last = e;
       if (i + 1 >= attempts || !retryable(e)) throw e;
       r.rotateIsolation(url, opts.scope ?? 'app');
-      await new Promise((ok) => setTimeout(ok, 400 * (i + 1)));
+      const limited = e instanceof HttpError && e.status === 429;
+      await new Promise((ok) => setTimeout(ok, limited ? Math.min(8_000, 1_500 * 2 ** i) : 400 * (i + 1)));
     }
   }
   throw last;

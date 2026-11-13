@@ -78,8 +78,9 @@ export const BUILTIN_NODES: Node[] = [
   // Solana / Tron
   B('solana', 'solana', 'https://api.mainnet-beta.solana.com', { isDefault: true }),
   B('solana', 'solana', 'https://solana-rpc.publicnode.com'),
-  B('tron', 'tron', 'https://api.trongrid.io', { isDefault: true }),
-  B('tron', 'tron', 'https://tron-rpc.publicnode.com'),
+  // Cake's default (trx.nownodes.io) needs an API key; TronGrid allows only 3 requests/s per IP without one
+  B('tron', 'tron', 'https://tron-rpc.publicnode.com', { isDefault: true, label: 'PublicNode' }),
+  B('tron', 'tron', 'https://api.trongrid.io', { label: 'TronGrid' }),
   // Nano (+ PoW nodes)
   B('nano', 'nano', 'https://rpc.nano.to', { isDefault: true }),
   B('nano', 'nano', 'https://node.nautilus.io/api'),
