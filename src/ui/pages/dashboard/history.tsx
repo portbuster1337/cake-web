@@ -48,6 +48,16 @@ export function sectionHeader(ms: number): string {
   return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** the details' confirmations row: electrum and EVM wallets, Zcash, Monero (transaction_details_view_model.dart) */
+const CONFIRMATION_ROW = new Set(['bitcoin', 'litecoin', 'bitcoinCash', 'dogecoin', 'ethereum', 'polygon', 'base', 'arbitrum', 'bsc', 'robinhood', 'zcash', 'monero']);
+
+/** TransactionDetailsViewModel.neededConfirmations (0: only the count is shown) */
+function neededConfirmations(w: WalletBase): number {
+  if (w.type === 'monero' || w.type === 'zano') return 10;
+  if (w.type === 'wownero') return 3;
+  return 0;
+}
+
 function confirmationsNeeded(w: WalletBase): number {
   if (w.type === 'monero' || w.type === 'zano') return 10;
   if (w.type === 'wownero') return 3;
@@ -170,7 +180,6 @@ function TxDetails({ w, tx, close }: { w: WalletBase; tx: TransactionInfo; close
   const a = txAsset(w, tx);
   const { amount } = formatTxAmount(w, tx);
   const explorer = w.explorerUrl(tx.id);
-  const need = confirmationsNeeded(w);
   const rows: { label: string; value: string; mono?: boolean }[] = [];
   rows.push({ label: t('transaction_details_date'), value: detailsDate(tx.date) });
   if (tx.height) rows.push({ label: t('transaction_details_height'), value: String(tx.height) });
@@ -185,6 +194,7 @@ function TxDetails({ w, tx, close }: { w: WalletBase; tx: TransactionInfo; close
   if (tx.key) rows.push({ label: t('transaction_key'), value: tx.key, mono: true });
   if (tx.memo) rows.push({ label: t('memo'), value: tx.memo });
   if (tx.paymentId) rows.push({ label: t('payment_id'), value: tx.paymentId, mono: true });
+  if (w.type === 'nano') rows.push({ label: t('confirmed_tx'), value: String(tx.confirmations > 0) });
   rows.push({ label: t('transaction_details_transaction_id'), value: tx.id, mono: true });
   const canBump = (w as any).canReplaceByFee?.(tx.id);
   return (
@@ -202,7 +212,7 @@ function TxDetails({ w, tx, close }: { w: WalletBase; tx: TransactionInfo; close
         <div class="col gap12">
           <Section>
             {rows.map((r) => (r.value.length <= 25 && !r.mono ? <Row label={r.label} trailingText={r.value} copy={r.value} /> : <Row label={r.label} subtitle={r.mono ? <span class="mono" style={{ fontSize: '12px' }}>{r.value.split('\n').map((v) => <div><AddressText address={v} /></div>)}</span> : r.value} copy={r.value} />))}
-            {tx.isPending && <Row label={t('confirmations')} trailing={<span><span style={{ color: 'var(--primary)' }}>{tx.confirmations}</span><span class="muted">/{need}</span></span>} />}
+            {CONFIRMATION_ROW.has(w.type) && <Row label={t('confirmations')} trailing={<span><span style={{ color: 'var(--primary)' }}>{tx.confirmations}</span>{neededConfirmations(w) > 0 && <span class="muted">/{neededConfirmations(w)}</span>}</span>} />}
           </Section>
           <div style={{ background: 'var(--surface-container)', borderRadius: '20px', padding: '12px' }}>
             <div>{t('note')}</div>

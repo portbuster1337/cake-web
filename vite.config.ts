@@ -62,6 +62,7 @@ function pagesHeaders(): Plugin {
         '# Security headers. The first matching rule applies.',
         `${base}monero.worker.host.js`, ...worker,
         `${base}vendor/*`, ...worker,
+        `${base}workers/*`, ...worker,
         `${base}*`, ...page,
         '',
       ].join('\n');
@@ -92,7 +93,8 @@ export default defineConfig({
       },
     },
   },
-  worker: { format: 'es' },
+  // workers live in workers/ so the Pages headers can give them the worker policy (no network)
+  worker: { format: 'es', rollupOptions: { output: { entryFileNames: 'workers/[name]-[hash].js', chunkFileNames: 'workers/[name]-[hash].js' } } },
   // keep tor-js un-prebundled so its `new URL('…wasm', import.meta.url)` resolves
   optimizeDeps: { exclude: ['tor-js'] },
   server: { host: '127.0.0.1', port: 5173 },

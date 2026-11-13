@@ -15,6 +15,7 @@ import { WALLET_TYPE_NAME, type WalletType, isEvm } from '../../coins/types.ts';
 import { validateWalletName } from './dashboard/wallets.tsx';
 import { pickOption } from './newWallet.tsx';
 import { estimateMoneroHeight } from '../../coins/heights.ts';
+import { settings } from '../../app/settings.ts';
 
 function OptionTile({ image, title, description, onClick, id }: { image: string; title: string; description: string; onClick: () => void; id?: string }) {
   return (
@@ -124,22 +125,27 @@ function WalletRestorePage({ args }: { args: { walletType: WalletType; prefill?:
     try {
       const h = height ? Number(height.replace(/[^0-9]/g, '')) : date ? estimateMoneroHeight(new Date(date)) : undefined;
       let info;
+      const mod = await coinModule(type);
+      const m = words.join(' ').toLowerCase();
+      // WalletRestorePage._confirmForm: the derivations with history decide; none (or several) → the chooser or the default
+      let chosen: DerivationCandidate | undefined;
+      if (mod.findDerivations && (type === 'bitcoin' || type === 'litecoin' || type === 'nano') && (mode === 'seed' || type === 'nano')) {
+        const list = mode === 'seed' ? await mod.findDerivations(m, pass ?? '') : await mod.findDerivations('', '', privateKey.trim());
+        const withHistory = list.filter((d) => (d.txCount ?? 0) > 0);
+        const scanPaths = new Set(["m/84'/0'/0'", "m/86'/0'/0'", "m/44'/0'/0'", "m/49'/0'/0'"]);
+        const skip = withHistory.length > 0 && withHistory.every((d) => scanPaths.has(d.derivationPath ?? ''));
+        if (withHistory.length > 1 && !skip) {
+          chosen = await nav.pushForResult<DerivationCandidate>(Routes.restoreWalletChooseDerivation, { list });
+          if (!chosen) return;
+        } else if (withHistory.length === 1) chosen = withHistory[0];
+        else if (list.length === 1) chosen = list[0];
+        // getCommonRestoreDerivation: Nano follows its seed type setting
+        else if (type === 'nano') chosen = { derivationType: settings.value.nanoSeedType === 'nano' ? 'nano' : 'bip39', description: '', address: '' };
+      }
       if (mode === 'seed') {
-        const m = words.join(' ').toLowerCase();
-        const mod = await coinModule(type);
-        let chosen: DerivationCandidate | undefined;
-        if (mod.findDerivations && (type === 'bitcoin' || type === 'litecoin' || type === 'nano')) {
-          const list = await mod.findDerivations(m, pass ?? '');
-          const withHistory = list.filter((d) => (d.txCount ?? 0) > 0);
-          const scanPaths = new Set(["m/84'/0'/0'", "m/86'/0'/0'", "m/44'/0'/0'", "m/49'/0'/0'"]);
-          const skip = withHistory.length > 0 && withHistory.every((d) => scanPaths.has(d.derivationPath ?? ''));
-          if (withHistory.length > 1 && !skip) chosen = await nav.pushForResult<DerivationCandidate>(Routes.restoreWalletChooseDerivation, { list });
-          else if (withHistory.length === 1) chosen = withHistory[0];
-          else if (list.length === 1) chosen = list[0];
-        }
         info = await restoreWalletFromSeed(type, { name: n, mnemonic: m, passphrase: pass, height: h, derivationType: chosen?.derivationType, derivationPath: chosen?.derivationType === 'electrum' ? "m/0'" : chosen?.derivationPath });
       } else {
-        info = await restoreWalletFromKeys(type, { name: n, address: address.trim(), viewKey: viewKey.trim(), spendKey: spendKey.trim(), privateKey: (privateKey || viewKey).trim(), hexSeed: privateKey.trim(), height: h });
+        info = await restoreWalletFromKeys(type, { name: n, address: address.trim(), viewKey: viewKey.trim(), spendKey: spendKey.trim(), privateKey: (privateKey || viewKey).trim(), hexSeed: privateKey.trim(), height: h, derivationType: chosen?.derivationType });
       }
       await openWallet(info.id);
       nav.reset(Routes.dashboard);
@@ -178,6 +184,9 @@ function WalletRestorePage({ args }: { args: { walletType: WalletType; prefill?:
               <span>{t('wallet_has_passphrase')}</span>
             </label>
           )}
+          <Button secondary id="wallet_restore_advanced_settings_button_key" onClick={() => nav.push(Routes.advancedPrivacySettings, { type, draft: {}, onChange: () => {}, isFromRestore: true })}>
+            {t('advanced_settings')}
+          </Button>
           <Button
             id="wallet_restore_seed_or_key_restore_button_key"
             disabled={!enabled}
@@ -253,12 +262,12 @@ function ChooseDerivationPage({ args }: { args: { list: DerivationCandidate[] } 
       ) : (
         <div class="col gap12" style={{ paddingTop: '12px' }}>
           {args.list.map((d) => (
-            <button type="button" onClick={() => nav.pop(d)} class="col" style={{ gap: '4px', background: 'var(--surface-container)', borderRadius: '18px', border: 0, padding: '16px', textAlign: 'start', color: 'var(--on-surface)', cursor: 'pointer' }}>
-              <span style={{ fontSize: '16px', fontWeight: 600 }}>{d.description || d.derivationType}</span>
-              {d.derivationPath && <span class="muted mono">{d.derivationPath}</span>}
-              <span class="mono" style={{ fontSize: '12px', wordBreak: 'break-all' }}>{d.address}</span>
-              <span class="muted">Confirmed: {d.balance ?? '0'}</span>
-              <span class="muted">Transactions: {d.txCount ?? 0}</span>
+            <button type="button" onClick={() => nav.pop(d)} class="col" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', gap: '2px', background: 'var(--surface-container)', borderRadius: '15px', border: 0, padding: '16px', textAlign: 'start', color: 'var(--on-surface-variant)', fontSize: '16px', fontWeight: 500, cursor: 'pointer' }}>
+              <span style={{ alignSelf: 'center', fontSize: '18px', fontWeight: 800, color: 'var(--primary)' }}>{d.description || d.derivationType}</span>
+              {d.derivationPath && <span>{d.derivationPath}</span>}
+              <span style={{ overflowWrap: 'anywhere' }}>{d.address}</span>
+              <span>{`${t('confirmed')}: ${d.balance ?? '0'}`}</span>
+              <span>{`${t('transactions')}: ${d.txCount ?? 0}`}</span>
             </button>
           ))}
         </div>

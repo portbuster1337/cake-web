@@ -20,6 +20,8 @@ import { isTokenWallet } from '../../../coins/tokens.ts';
 import { assetFiat, openAssetDetails, sortedAssets, TokenIcon, useAssetPrices } from '../tokens.tsx';
 
 const SYNC_HEAVY = new Set(['monero', 'wownero', 'decred', 'zcash', 'zano']);
+/** BalanceViewModel._hasAdditionalBalanceForWalletType: wallets with the "confirming" balance row */
+const ADDITIONAL_BALANCE = new Set(['monero', 'wownero', 'zano', 'decred', 'zcash']);
 
 function ChainIcon({ w }: { w: WalletBase }) {
   const s = w.syncStatus.value;
@@ -158,7 +160,7 @@ function WalletHome({ w }: { w: WalletBase }) {
   }
   const design = designFor(cur.key, s.cardDesigns[w.id]);
   const txs = w.transactions.value;
-  const pending = bal.pending ?? 0n;
+  const pending = ADDITIONAL_BALANCE.has(w.type) ? bal.pending ?? 0n : 0n;
   const showReminder = !s.seedBackedUp[w.id] && !!w.seed && bal.full > 0n;
   const toggleHidden = () => {
     updateSettings((x) => ({ balanceDisplayMode: x.balanceDisplayMode === 'hiddenBalance' ? 'availableBalance' : 'hiddenBalance', hiddenBalanceToggles: x.hiddenBalanceToggles + 1 }));

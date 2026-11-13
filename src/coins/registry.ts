@@ -14,3 +14,4 @@ registerCoin('bsc', () => import('./evm/module.ts').then((m) => m.bscModule));
 registerCoin('robinhood', () => import('./evm/module.ts').then((m) => m.robinhoodModule));
 registerCoin('solana', () => import('./solana/module.ts').then((m) => m.solanaModule));
 registerCoin('tron', () => import('./tron/module.ts').then((m) => m.tronModule));
+registerCoin('nano', () => import('./nano/module.ts').then((m) => m.nanoModule));

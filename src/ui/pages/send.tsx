@@ -70,6 +70,8 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
   const synced = isSynced(w.syncStatus.value);
   const priorities = w.priorities();
   const multi = w.hasMultipleOutputs;
+  // Nano: the next block's proof of work starts while the form is filled in
+  useEffect(() => (w as { prepareSend?: () => void }).prepareSend?.(), [w.id]);
 
   const update = (p: Partial<Recipient>) => setRecipients(recipients.map((x, i) => (i === idx ? { ...x, ...p } : x)));
 

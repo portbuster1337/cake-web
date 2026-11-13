@@ -82,13 +82,20 @@ export const BUILTIN_NODES: Node[] = [
   B('tron', 'tron', 'https://tron-rpc.publicnode.com', { isDefault: true, label: 'PublicNode' }),
   B('tron', 'tron', 'https://api.trongrid.io', { label: 'TronGrid' }),
   // Nano (+ PoW nodes)
-  B('nano', 'nano', 'https://rpc.nano.to', { isDefault: true }),
-  B('nano', 'nano', 'https://node.nautilus.io/api'),
-  B('nano', 'nano', 'https://app.natrium.io/api'),
-  B('nano', 'nano', 'https://rainstorm.city/api'),
-  B('nano', 'nano', 'https://node.somenano.com/proxy'),
-  B('nano', 'nano', 'https://nanoslo.0x.no/proxy'),
-  B('nano', 'nanoPow', 'https://rpc.nano.to', { isDefault: true, pow: true }),
+  // Nano (assets/nano_node_list.yml). Cake's default (rpc.nano.to) is used with Cake's API key; without one it
+  // bans busy IPs for minutes, and Tor exits are shared, so a keyless node is the default here.
+  B('nano', 'nano', 'https://rpc.nano.to', { label: 'Nano.to' }),
+  B('nano', 'nano', 'https://nano.nownodes.io', { label: 'NOWNodes' }),
+  B('nano', 'nano', 'https://node.nautilus.io/api', { label: 'Nautilus' }),
+  B('nano', 'nano', 'https://app.natrium.io/api', { isDefault: true, label: 'Natrium' }),
+  B('nano', 'nano', 'https://rainstorm.city/api', { label: 'Rainstorm City' }),
+  B('nano', 'nano', 'https://node.somenano.com/proxy', { label: 'SomeNano' }),
+  B('nano', 'nano', 'https://nanoslo.0x.no/proxy', { label: '0x.no' }),
+  // Nano work servers (assets/nano_pow_node_list.yml). Cake's default (rpc.nano.to) needs an API key and
+  // the others are not reachable over Tor, so by default the proof of work is computed on this device.
+  B('nano', 'nanoPow', 'local', { isDefault: true, pow: true, label: 'This device' }),
+  B('nano', 'nanoPow', 'https://rpc.nano.to', { pow: true, label: 'Nano.to' }),
+  B('nano', 'nanoPow', 'http://workers.perish.co', { pow: true }),
   B('nano', 'nanoPow', 'https://worker.nanoriver.cc', { pow: true }),
 ];
 

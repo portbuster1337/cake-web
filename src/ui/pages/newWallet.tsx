@@ -39,9 +39,44 @@ export function seedTypeOptions(type: WalletType) {
   return SEED_TYPES_BY_COIN[type];
 }
 
+/** advanced_privacy_settings_view_model.dart hasPassphraseOption (not Nano) */
+const PASSPHRASE_TYPES = new Set<WalletType>(['bitcoin', 'litecoin', 'bitcoinCash', 'ethereum', 'polygon', 'base', 'arbitrum', 'bsc', 'robinhood', 'tron', 'solana', 'monero', 'wownero', 'zano', 'dogecoin', 'zcash', 'decred']);
+
+/** hasSeedPhraseLengthOption: most chains; BTC/LTC and Nano only with a BIP39 seed; never Monero/Wownero */
+function hasSeedPhraseLengthOption(type: WalletType, seedType?: string): boolean {
+  switch (type) {
+    case 'bitcoin':
+    case 'litecoin':
+    case 'nano':
+      return seedType === 'bip39';
+    case 'monero':
+    case 'wownero':
+    case 'haven':
+      return false;
+    default:
+      return true;
+  }
+}
+
+/** the Recovery phrase type choices (SettingsChoicesCell): MoneroSeedType / BitcoinSeedType / NanoSeedType .all */
+const SEED_TYPE_CHOICES: Partial<Record<WalletType, { value: string; label: string }[]>> = {
+  monero: [{ value: 'legacy', label: 'Legacy' }, { value: 'polyseed', label: 'Polyseed' }, { value: 'bip39', label: 'BIP39' }],
+  bitcoin: [{ value: 'electrum', label: 'Electrum' }, { value: 'bip39', label: 'BIP39' }],
+  litecoin: [{ value: 'electrum', label: 'Electrum' }, { value: 'bip39', label: 'BIP39' }],
+  nano: [{ value: 'nano', label: 'Nano' }, { value: 'bip39', label: 'BIP39' }],
+};
+
+/** SeedSettingsViewModel: the seed types are settings (BTC and LTC share one) */
+function persistSeedType(type: WalletType, v: string): void {
+  if (type === 'monero') updateSettings({ moneroSeedType: v });
+  else if (type === 'bitcoin' || type === 'litecoin') updateSettings({ bitcoinSeedType: v });
+  else if (type === 'nano') updateSettings({ nanoSeedType: v });
+}
+
 function defaultSeedType(type: WalletType): string | undefined {
   const s = settings.value;
-  if (type === 'monero') return s.moneroSeedType;
+  // QUIRK (new_wallet_page.dart): opening the New Wallet page resets the Monero seed type to Polyseed
+  if (type === 'monero') return 'polyseed';
   if (type === 'bitcoin' || type === 'litecoin') return s.bitcoinSeedType;
   if (type === 'nano') return s.nanoSeedType;
   return undefined;
@@ -92,7 +127,8 @@ function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; 
   const type = args.type;
   const dark = currentPalette().isDark;
   const [name, setName] = useState('');
-  const [draft, setDraft] = useState<NewWalletDraft>({ seedType: defaultSeedType(type), wordCount: 12 });
+  const [draft, setDraft] = useState<NewWalletDraft>(() => ({ seedType: defaultSeedType(type), wordCount: settings.value.seedPhraseLength === 24 ? 24 : 12 }));
+  useEffect(() => updateSettings({ moneroSeedType: 'polyseed' }), []);
   const [busy, setBusy] = useState(false);
   const seedTypes = seedTypeOptions(type);
 
@@ -148,7 +184,10 @@ function NewWalletPage({ args }: { args: { type: WalletType; mnemonic?: string; 
         {type === 'monero' && seedTypes && (
           <button type="button" class="field" style={{ minHeight: '60px', cursor: 'pointer', justifyContent: 'space-between', fontSize: '18px', fontWeight: 500 }} onClick={async () => {
             const v = await pickOption(t('seedtype'), seedTypes, draft.seedType);
-            if (v) setDraft({ ...draft, seedType: v });
+            if (v) {
+              setDraft({ ...draft, seedType: v });
+              updateSettings({ moneroSeedType: v });
+            }
           }}>
             <span>{seedTypes.find((s) => s.id === draft.seedType)?.label}</span>
             <MIcon name="chevronDown" color="var(--on-surface-variant)" />
@@ -184,19 +223,39 @@ export function pickOption(title: string, options: { id: string; label: string; 
 
 /** AdvancedPrivacySettingsPage */
 function AdvancedPrivacySettingsPage({ args }: { args: { type: WalletType; draft: NewWalletDraft; onChange: (d: NewWalletDraft) => void; isFromRestore?: boolean; isChildWallet?: boolean } }) {
-  const [d, setD] = useState<NewWalletDraft>(args.draft ?? {});
+  const type = args.type;
+  const child = !!args.isChildWallet;
+  // a child wallet shares its parent's BIP39 phrase: BTC and Nano are forced to BIP39 (and that is persisted)
+  const [d, setD] = useState<NewWalletDraft>(() => {
+    const x = { ...(args.draft ?? {}) };
+    if (args.isFromRestore) x.seedType = (type === 'monero' ? settings.value.moneroSeedType : defaultSeedType(type)) ?? x.seedType;
+    if (child && (type === 'bitcoin' || type === 'litecoin' || type === 'nano')) x.seedType = 'bip39';
+    return x;
+  });
+  useEffect(() => {
+    if (child) updateSettings({ bitcoinSeedType: 'bip39', nanoSeedType: 'bip39' });
+  }, []);
   const [confirm, setConfirm] = useState(d.passphrase ?? '');
   const [showPass, setShowPass] = useState(false);
   const s = settings.value;
-  const seedTypes = seedTypeOptions(args.type);
+  const choices = SEED_TYPE_CHOICES[type];
+  const showSeedType = !!choices && !(child && (type === 'monero' || type === 'wownero'));
   const passMismatch = (d.passphrase ?? '') !== confirm;
-  const supportsPassphrase = !['monero', 'nano', 'decred', 'zcash'].includes(args.type) || d.seedType === 'bip39' || args.type === 'monero' && d.seedType === 'polyseed';
-  const supportsLength = d.seedType === 'bip39' || !seedTypes;
+  const supportsPassphrase = PASSPHRASE_TYPES.has(type);
+  const supportsLength = hasSeedPhraseLengthOption(type, d.seedType);
   const modes: { value: FiatApiMode; label: string }[] = [
     { value: 'enabled', label: t('enabled') },
     { value: 'torOnly', label: t('tor_only') },
     { value: 'disabled', label: t('disabled') },
   ];
+  const setSeedType = async (v: string) => {
+    if (child && v !== 'bip39') {
+      await showAlert({ title: t('seedtype_alert_title'), content: t('seedtype_alert_content') });
+      return;
+    }
+    setD({ ...d, seedType: v });
+    persistSeedType(type, v);
+  };
   return (
     <Page
       title={t('privacy_settings')}
@@ -227,30 +286,24 @@ function AdvancedPrivacySettingsPage({ args }: { args: { type: WalletType; draft
           <div>{t('swap')}</div>
           <Segmented options={modes as { value: ExchangeApiMode; label: string }[]} value={s.exchangeStatus} onChange={(v) => updateSettings({ exchangeStatus: v })} />
         </div>
-        {seedTypes && (
-          <Section>
-            <Row
-              label={t('seedtype')}
-              trailingText={seedTypes.find((x) => x.id === d.seedType)?.label}
-              onClick={async () => {
-                if (args.isChildWallet) {
-                  await showAlert({ title: t('seedtype_alert_title'), content: t('seedtype_alert_content') });
-                  return;
-                }
-                const v = await pickOption(t('seedtype'), seedTypes, d.seedType);
-                if (v) setD({ ...d, seedType: v });
-              }}
-            />
-          </Section>
+        {showSeedType && (
+          <div class="col gap12" id="advanced_privacy_settings_seed_type">
+            <div>{t('seedtype')}</div>
+            <Segmented options={choices!} value={d.seedType ?? choices![choices!.length - 1].value} onChange={(v) => void setSeedType(v)} />
+          </div>
         )}
-        {!args.isFromRestore && supportsLength && !args.isChildWallet && args.type !== 'monero' && (
+        {!args.isFromRestore && supportsLength && (
           <Section>
             <Row
               label={t('seed_phrase_length')}
-              trailingText={`${d.wordCount ?? 12} ${t('words') === 'words' ? 'words' : t('words')}`}
+              id="advanced_privacy_settings_seed_length"
+              trailingText={`${d.wordCount === 24 ? 24 : 12} Words`}
               onClick={async () => {
-                const v = await pickOption(t('seed_phrase_length'), [{ id: '12', label: '12' }, { id: '24', label: '24' }], String(d.wordCount ?? 12));
-                if (v) setD({ ...d, wordCount: Number(v) });
+                const v = await pickOption(t('seed_phrase_length'), [{ id: '12', label: '12 Words' }, { id: '24', label: '24 Words' }], String(d.wordCount === 24 ? 24 : 12));
+                if (v) {
+                  setD({ ...d, wordCount: Number(v) });
+                  updateSettings({ seedPhraseLength: Number(v) });
+                }
               }}
             />
           </Section>

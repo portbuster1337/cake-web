@@ -30,6 +30,8 @@ export interface RestoreSeedOptions {
 
 export interface RestoreKeysOptions {
   name: string;
+  /** Nano: the derivation chosen for a hex seed */
+  derivationType?: string;
   address?: string;
   viewKey?: string;
   spendKey?: string;
@@ -56,8 +58,8 @@ export interface CoinModule {
   createWallet(o: NewWalletOptions): Promise<{ info: WalletInfo; secrets: WalletSecrets }>;
   restoreFromSeed(o: RestoreSeedOptions): Promise<{ info: WalletInfo; secrets: WalletSecrets }>;
   restoreFromKeys?(o: RestoreKeysOptions): Promise<{ info: WalletInfo; secrets: WalletSecrets }>;
-  /** BTC/LTC/Nano/EVM: which derivations hold funds (WalletRestoreChooseDerivationPage) */
-  findDerivations?(mnemonic: string, passphrase?: string): Promise<DerivationCandidate[]>;
+  /** BTC/LTC/Nano/EVM: which derivations hold funds (WalletRestoreChooseDerivationPage); Nano also for a hex seed */
+  findDerivations?(mnemonic: string, passphrase?: string, seedKey?: string): Promise<DerivationCandidate[]>;
   validateMnemonic(mnemonic: string): boolean;
   /** word counts accepted on the restore page */
   seedWordCounts(): number[];

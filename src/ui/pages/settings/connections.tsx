@@ -134,8 +134,10 @@ export async function testNode(n: Node): Promise<number> {
       await postJson(`${base}/wallet/getnowblock`, {}, opts);
       break;
     case 'nano':
-    case 'nanoPow':
       await postJson(base, { action: 'block_count' }, opts);
+      break;
+    case 'nanoPow':
+      if (n.url !== 'local') await postJson(base, { action: 'block_count' }, opts);
       break;
     default:
       await request(base, undefined, opts);
@@ -409,6 +411,8 @@ const KEY_PROVIDERS: { id: string; label: string; hint: string }[] = [
   { id: 'blink', label: 'Blink', hint: 'MEV protection for Ethereum/Base sends' },
   { id: 'moralis', label: 'Moralis', hint: 'NFTs, token metadata' },
   { id: 'trongrid', label: 'TronGrid', hint: 'TRON-PRO-API-KEY' },
+  { id: 'nanoto', label: 'Nano.to', hint: 'Nano RPC and work server (rpc.nano.to)' },
+  { id: 'nownodes', label: 'NOWNodes', hint: 'api-key (nano.nownodes.io)' },
   { id: 'onramper', label: 'Onramper', hint: 'Buy/Sell' },
   { id: 'moonpay', label: 'MoonPay', hint: 'publishable key' },
   { id: 'cakepay', label: 'Cake Pay', hint: 'API key' },

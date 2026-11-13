@@ -7,6 +7,7 @@ import './receive.tsx';
 import './send.tsx';
 import './coins.tsx';
 import './tokens.tsx';
+import './nano.tsx';
 import './settings/main.tsx';
 import './settings/connections.tsx';
 import './settings/pages.tsx';

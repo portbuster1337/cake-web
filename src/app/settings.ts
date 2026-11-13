@@ -68,6 +68,12 @@ export interface Settings {
   moneroSeedType: string;
   bitcoinSeedType: string;
   nanoSeedType: string;
+  /** current_seed_phrase_length: 12 or 24 words for new BIP39 seeds */
+  seedPhraseLength: number;
+  /** default_nano_representative: the representative of new Nano accounts (set by Change Representative) */
+  defaultNanoRep: string;
+  /** should_show_rep_warning */
+  shouldShowRepWarning: boolean;
   /** domain lookups */
   lookupsTwitter: boolean;
   lookupsMastodon: boolean;
@@ -176,6 +182,9 @@ export const DEFAULT_SETTINGS: Settings = {
   moneroSeedType: 'polyseed',
   bitcoinSeedType: 'bip39',
   nanoSeedType: 'bip39',
+  seedPhraseLength: 12,
+  defaultNanoRep: '',
+  shouldShowRepWarning: true,
   lookupsTwitter: true,
   lookupsMastodon: true,
   lookupsYatService: true,
