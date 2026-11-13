@@ -20,4 +20,5 @@ void boot();
 import * as appApi from './app/app.ts';
 import { settings as settingsSignal } from './app/settings.ts';
 import { nav as navApi } from './ui/nav.ts';
-(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi };
+import * as tradesApi from './exchange/trades.ts';
+(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi };

@@ -132,6 +132,43 @@ export function compileMessage(instructions: Instruction[], payer: string, recen
   return { bytes: version === 0 ? concatBytes(Uint8Array.of(0x80), body, shortvec(0)) : body, keys };
 }
 
+/** a compact-u16 ("shortvec") at `at`: its value and byte length */
+export function readShortvec(b: Uint8Array, at: number): [number, number] {
+  let v = 0;
+  for (let i = 0; i < 3; i++) {
+    const x = b[at + i];
+    if (x === undefined) throw new Error('Invalid transaction');
+    v |= (x & 0x7f) << (7 * i);
+    if (!(x & 0x80)) return [v, i + 1];
+  }
+  throw new Error('Invalid transaction');
+}
+
+/**
+ * Sign a serialized transaction built by someone else (legacy or v0 message): our signature goes into the slot of
+ * our key among the message's signers. Returns the signed transaction and its id (the first signature).
+ */
+export function signSerializedTransaction(tx: Uint8Array, seed: Uint8Array): { tx: Uint8Array; signature: string } {
+  const [count, len] = readShortvec(tx, 0);
+  const msgAt = len + 64 * count;
+  const message = tx.subarray(msgAt);
+  if (!message.length) throw new Error('Invalid transaction');
+  let i = message[0] & 0x80 ? 1 : 0;
+  const required = message[i];
+  i += 3;
+  const [nKeys, kl] = readShortvec(message, i);
+  i += kl;
+  const me = publicKeyOf(seed);
+  let slot = -1;
+  for (let k = 0; k < Math.min(required, nKeys); k++) {
+    if (encodeAddress(message.subarray(i + 32 * k, i + 32 * k + 32)) === me) slot = k;
+  }
+  if (slot < 0 || slot >= count) throw new Error('This transaction is not for this wallet');
+  const out = tx.slice();
+  out.set(ed25519.sign(message, seed), len + 64 * slot);
+  return { tx: out, signature: base58.encode(out.subarray(len, len + 64)) };
+}
+
 /** a transaction with a single signer (the fee payer) */
 export function signMessage(message: Uint8Array, seed: Uint8Array): { tx: Uint8Array; signature: string } {
   const sig = ed25519.sign(message, seed);

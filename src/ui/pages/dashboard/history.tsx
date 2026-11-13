@@ -13,6 +13,9 @@ import { vault } from '../../../core/vault.ts';
 import { nav } from '../../nav.ts';
 import { isTokenWallet } from '../../../coins/tokens.ts';
 import { Routes } from '../../routes.ts';
+import { trades } from '../../../exchange/trades.ts';
+import type { Trade } from '../../../exchange/types.ts';
+import { TradeTile } from '../swap/trade.tsx';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -124,31 +127,49 @@ export function HistoryTile({ w, tx, first, last, onClick, hidden }: { w: Wallet
   );
 }
 
-export function HistoryList({ w, txs, grouped, hidden }: { w: WalletBase; txs: TransactionInfo[]; grouped?: boolean; hidden?: boolean }) {
-  if (!grouped) {
-    return (
-      <div class="col">
-        {txs.map((tx, i) => (
-          <HistoryTile w={w} tx={tx} first={i === 0} last={i === txs.length - 1} hidden={hidden} onClick={() => openTxDetails(w, tx)} />
-        ))}
-      </div>
-    );
-  }
-  const groups: { header: string; items: TransactionInfo[] }[] = [];
+export type HistoryItem = { kind: 'tx'; tx: TransactionInfo } | { kind: 'trade'; trade: Trade };
+
+/** DashboardViewModel.trades + TradeFilterStore.filtered: this wallet's trades (same chain, same account) */
+export function tradesForWallet(w: WalletBase): Trade[] {
+  const chainId = (w as { chainId?: number }).chainId;
+  const own = new Set([...w.addresses.value.map((a) => a.address), w.receiveAddress.value]);
+  return trades.value.filter((x) => x.walletId === w.id && (x.chainId === undefined || x.chainId === null || x.chainId === chainId) && (!x.fromWalletAddress || own.has(x.fromWalletAddress)));
+}
+
+/** formattedItemsList: transactions and trades by date, newest first (pending transactions keep their place on top) */
+export function historyItems(w: WalletBase, txs: TransactionInfo[]): HistoryItem[] {
+  const tr = tradesForWallet(w).map((trade) => ({ kind: 'trade' as const, trade }));
+  const out: HistoryItem[] = [];
+  let ti = 0;
   for (const tx of txs) {
-    const h = tx.isPending ? t('today') : sectionHeader(tx.date);
+    while (ti < tr.length && !tx.isPending && (tr[ti].trade.createdAt ?? 0) >= tx.date) out.push(tr[ti++]);
+    out.push({ kind: 'tx', tx });
+  }
+  while (ti < tr.length) out.push(tr[ti++]);
+  return out;
+}
+
+const itemDate = (it: HistoryItem) => (it.kind === 'tx' ? it.tx.date : it.trade.createdAt ?? Date.now());
+
+export function HistoryList({ w, txs, items: given, grouped, hidden }: { w: WalletBase; txs: TransactionInfo[]; items?: HistoryItem[]; grouped?: boolean; hidden?: boolean }) {
+  const items = given ?? historyItems(w, txs);
+  const tile = (it: HistoryItem, first: boolean, last: boolean) => (it.kind === 'tx' ? <HistoryTile w={w} tx={it.tx} first={first} last={last} hidden={hidden} onClick={() => openTxDetails(w, it.tx)} /> : <TradeTile trade={it.trade} first={first} last={last} hidden={hidden} />);
+  if (!grouped) {
+    return <div class="col">{items.map((it, i) => tile(it, i === 0, i === items.length - 1))}</div>;
+  }
+  const groups: { header: string; items: HistoryItem[] }[] = [];
+  for (const it of items) {
+    const h = it.kind === 'tx' && it.tx.isPending ? t('today') : sectionHeader(itemDate(it));
     const g = groups[groups.length - 1];
-    if (g && g.header === h) g.items.push(tx);
-    else groups.push({ header: h, items: [tx] });
+    if (g && g.header === h) g.items.push(it);
+    else groups.push({ header: h, items: [it] });
   }
   return (
     <div class="col">
       {groups.map((g, gi) => (
         <div>
           <div class="muted" style={{ padding: `${gi ? 18 : 0}px 0 8px 8px` }}>{g.header}</div>
-          {g.items.map((tx, i) => (
-            <HistoryTile w={w} tx={tx} first={i === 0} last={i === g.items.length - 1} hidden={hidden} onClick={() => openTxDetails(w, tx)} />
-          ))}
+          {g.items.map((it, i) => tile(it, i === 0, i === g.items.length - 1))}
         </div>
       ))}
     </div>

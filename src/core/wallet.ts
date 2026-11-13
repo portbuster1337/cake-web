@@ -385,6 +385,14 @@ export abstract class WalletBase {
   /** make an address the receive address */
   selectReceiveAddress(_address: string): void {}
 
+  /** WalletAddresses.addressForExchange: the address a swap refunds to (or pays into, for this wallet's coin) */
+  async addressForExchange(): Promise<string> {
+    return this.receiveAddress.value;
+  }
+
+  /** exchange_view_model.dart createTrade: hiddenAddresses.add — an address given to a swap is not offered again */
+  async hideAddressAfterExchange(_address: string): Promise<void> {}
+
   /** a new receive address (subaddress / next unused) */
   async newAddress(_label?: string, _type?: string): Promise<WalletAddressEntry | null> {
     return null;

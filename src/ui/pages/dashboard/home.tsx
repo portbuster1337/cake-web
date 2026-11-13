@@ -12,7 +12,7 @@ import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl } from '../../../coins/types.ts';
 import { BalanceCard, CardChip, cardStyleKey, designFromStyle } from './cards.tsx';
-import { HistoryList } from './history.tsx';
+import { HistoryList, historyItems, tradesForWallet, type HistoryItem } from './history.tsx';
 import { nav } from '../../nav.ts';
 import { Routes } from '../../routes.ts';
 import { useEffect } from 'preact/hooks';
@@ -219,7 +219,8 @@ function WalletHome({ w }: { w: WalletBase }) {
 function AssetsHistory({ w, txs, hidden }: { w: WalletBase; txs: ReturnType<WalletBase['transactions']['peek']>; hidden: boolean }) {
   const hasAssets = w.hasTokens;
   const [tab, setTab] = useState<'assets' | 'history'>(hasAssets ? 'assets' : 'history');
-  const short = txs.slice(0, 3);
+  // DashboardViewModel.itemsShort: the first 3 items, swaps included
+  const short = historyItems(w, txs).slice(0, 3);
   const syncing = !isSynced(w.syncStatus.value);
   return (
     <div style={{ padding: '20px 16px 0' }}>
@@ -258,10 +259,10 @@ function AssetsHistory({ w, txs, hidden }: { w: WalletBase; txs: ReturnType<Wall
   );
 }
 
-function HistoryListJoined({ w, txs, hidden, joined }: { w: WalletBase; txs: any[]; hidden: boolean; joined: boolean }) {
+function HistoryListJoined({ w, txs, hidden, joined }: { w: WalletBase; txs: HistoryItem[]; hidden: boolean; joined: boolean }) {
   return (
     <div class="col" style={joined ? { borderRadius: '0 0 22px 22px', overflow: 'hidden' } : undefined}>
-      <HistoryList w={w} txs={txs} hidden={hidden} />
+      <HistoryList w={w} txs={[]} items={txs} hidden={hidden} />
     </div>
   );
 }
@@ -327,7 +328,7 @@ function HistoryModal({ w, close }: { w: WalletBase; close: () => void }) {
     <div class="col" style={{ height: '100%', background: 'var(--surface)' }} id="history_modal">
       <TopBar title={t('history')} onClose={close} trailing={<ModernButton svg="tx_export.svg" size={36} label={t('export_csv')} onClick={exportCsv} />} />
       <div class="page-body" style={{ padding: '0 16px 144px' }}>
-        {txs.length ? <HistoryList w={w} txs={txs} grouped hidden={settings.value.balanceDisplayMode === 'hiddenBalance'} /> : <div class="muted center" style={{ paddingTop: '24px' }}>{t('transactions_will_appear_here')}</div>}
+        {txs.length || tradesForWallet(w).length ? <HistoryList w={w} txs={txs} grouped hidden={settings.value.balanceDisplayMode === 'hiddenBalance'} /> : <div class="muted center" style={{ paddingTop: '24px' }}>{t('transactions_will_appear_here')}</div>}
       </div>
       <div style={{ position: 'absolute', left: '12px', right: '12px', bottom: '24px' }}>
         <button

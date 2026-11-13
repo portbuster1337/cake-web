@@ -41,6 +41,11 @@ export const Routes = {
   exchangeConfirm: '/exchange_confirm',
   tradeHistory: '/trade_history',
   tradeDetails: '/trade_details',
+  swapOptions: '/swap_options',
+  swapProvidersPage: '/swap_providers',
+  swapProviderSelector: '/swap_provider_selector',
+  swapProviderPicker: '/swap_provider_picker',
+  trocadorProviders: '/trocador_providers',
   exchangeTrade: '/exchange_trade',
   exchange: '/exchange',
   settings: '/settings',
@@ -125,6 +130,17 @@ export function registerRoute(name: string, c: FunctionComponent<any>): void {
 
 export function routeComponent(name: string): FunctionComponent<{ args?: any }> | undefined {
   return registry.get(name);
+}
+
+/** pages that stay mounted under the pages pushed over them (their state lives in the component) */
+const keepAlive = new Set<string>();
+
+export function registerKeepAlive(name: string): void {
+  keepAlive.add(name);
+}
+
+export function isKeepAlive(name: string): boolean {
+  return keepAlive.has(name);
 }
 
 export function registeredRoutes(): string[] {

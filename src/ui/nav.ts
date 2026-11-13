@@ -8,6 +8,8 @@ export interface RouteEntry {
   name: string;
   args?: any;
   key: number;
+  /** keep this page mounted while others are pushed over it (a modal with its own state, like the swap) */
+  keepAlive?: boolean;
 }
 
 let seq = 0;

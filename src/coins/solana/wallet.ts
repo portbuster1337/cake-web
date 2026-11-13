@@ -18,7 +18,7 @@ import { slip10Ed25519 } from '../seeds/slip10.ts';
 import { t } from '../../core/i18n.ts';
 import { SPL_DEFAULT_TOKENS } from '../tokens.gen.ts';
 import { isTokenPropertiesSuspicious, tokenIcon, type TokenAsset, type TokenWallet, type WalletToken } from '../tokens.ts';
-import { ATA_PROGRAM, COMPUTE_BUDGET_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_ACCOUNT_SIZE, TOKEN_PROGRAM, WSOL_MINT, associatedTokenAddress, compileMessage, createAtaIdempotent, decodeAddress, isOnCurve, isValidSolAddress, metadataAddress, parseMetadataAccount, publicKeyOf, signMessage, signText, systemTransfer, transferChecked, verifyText } from './sol.ts';
+import { ATA_PROGRAM, COMPUTE_BUDGET_PROGRAM, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM, TOKEN_ACCOUNT_SIZE, TOKEN_PROGRAM, WSOL_MINT, associatedTokenAddress, compileMessage, createAtaIdempotent, decodeAddress, isOnCurve, isValidSolAddress, metadataAddress, parseMetadataAccount, publicKeyOf, signMessage, signSerializedTransaction, signText, systemTransfer, transferChecked, verifyText } from './sol.ts';
 
 export const SOL_PATH = "m/44'/501'/0'/0'";
 const POLL_MS = 30_000;
@@ -776,6 +776,17 @@ export class SolanaWallet extends WalletBase implements TokenWallet {
         void this.#pollForTransaction(signature);
       },
     };
+  }
+
+  /** signAndPrepareJupiterSwapTransaction: sign a transaction a swap provider built for this wallet (base64 in and out) */
+  signTransactionBase64(b64: string): { signed: string; signature: string } {
+    const { tx, signature } = signSerializedTransaction(base64.decode(b64), this.#seed);
+    return { signed: base64.encode(tx), signature };
+  }
+
+  /** a transaction sent by someone else for this wallet (a swap executed by its provider): show it once it lands */
+  watchSignature(sig: string): void {
+    void this.#pollForTransaction(sig);
   }
 
   /** pollForTransaction: up to 5 tries, 1..5 s apart, then a full history update */

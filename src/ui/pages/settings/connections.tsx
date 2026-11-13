@@ -410,6 +410,8 @@ const KEY_PROVIDERS: { id: string; label: string; hint: string }[] = [
   { id: 'chainflip', label: 'Chainflip broker', hint: 'broker API key' },
   { id: 'swapsxyz', label: 'Swaps.xyz', hint: 'x-api-key' },
   { id: 'whynot', label: 'WhyNot', hint: 'API key' },
+  { id: 'nearintents', label: 'NEAR Intents', hint: 'JWT (optional: without one 1Click adds its own fee)' },
+  { id: 'jupiter', label: 'Jupiter', hint: 'x-api-key (optional: keyless requests are rate-limited)' },
   { id: 'etherscan', label: 'Etherscan', hint: 'Etherscan V2 API key (EVM history)' },
   { id: 'blink', label: 'Blink', hint: 'MEV protection for Ethereum/Base sends' },
   { id: 'moralis', label: 'Moralis', hint: 'NFTs, token metadata' },

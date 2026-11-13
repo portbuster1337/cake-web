@@ -182,7 +182,7 @@ const FIAT_NAMES: Record<string, string> = {
   VND: 'Vietnamese Dong đồng', ZAR: 'South African Rand', TRY: 'Turkish Lira', KES: 'Kenyan Shillings',
 };
 
-function pickFiat() {
+export function pickFiat() {
   return showSheet<string>((close) => <FiatPicker close={close} />, { full: true }).then((v) => {
     if (v) {
       updateSettings({ fiatCurrency: v });

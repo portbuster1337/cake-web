@@ -19,6 +19,8 @@ import type { WalletInfo, WalletSecrets } from '../core/wallet.ts';
 import type { WalletType } from '../coins/types.ts';
 import { customNodes, currentNodeIds } from '../core/nodes.ts';
 import { contacts, loadContacts, type Contact } from './contacts.ts';
+import { importTrades, trades } from '../exchange/trades.ts';
+import type { Trade } from '../exchange/types.ts';
 import { settings, updateSettings, type Settings } from './settings.ts';
 import { getSecrets, loadWalletInfos, saveNodes, saveSecrets, saveWalletInfo, walletCache, walletInfos } from './app.ts';
 
@@ -111,7 +113,7 @@ async function innerZip(password: string): Promise<Uint8Array> {
   files['~_transaction_descriptions_dump'] = enc.encode(JSON.stringify(descriptions));
   const keychain = { wallets: wallets.map((w) => ({ name: w.name, type: `WalletType.${w.type}`, password: '', hardwareWalletType: null })), BACKUP_CODE_PASSWORD: password, _all: {} };
   files['~_keychain_dump'] = await cbEncrypt(KEYCHAIN_SALT + password, enc.encode(JSON.stringify(keychain)));
-  files['cake_web.json'] = enc.encode(serialize({ version: 1, app: APP_NAME, wallets, contacts: contacts.value, nodes: { custom: customNodes.value, current: currentNodeIds.value } }));
+  files['cake_web.json'] = enc.encode(serialize({ version: 1, app: APP_NAME, wallets, contacts: contacts.value, nodes: { custom: customNodes.value, current: currentNodeIds.value }, trades: trades.value }));
   return zipSync(files, { level: 9 });
 }
 
@@ -150,7 +152,7 @@ export async function importBackup(file: Uint8Array, password: string, checkBack
   }
   const web = files['cake_web.json'];
   if (!web) throw new BackupError('This backup was made by the Cake Wallet app: its wallet files are encrypted with a secret of the app and cannot be opened here. Restore each wallet from its recovery phrase instead.');
-  const manifest = deserialize<{ wallets: { id: string; path: string }[]; contacts?: Contact[]; nodes?: { custom?: typeof customNodes.value; current?: typeof currentNodeIds.value } }>(dec.decode(web));
+  const manifest = deserialize<{ wallets: { id: string; path: string }[]; contacts?: Contact[]; nodes?: { custom?: typeof customNodes.value; current?: typeof currentNodeIds.value }; trades?: Trade[] }>(dec.decode(web));
   // keychain dump: the backup password comes back (importKeychainDumpV2)
   const kc = files['~_keychain_dump'];
   if (kc) {
@@ -192,6 +194,8 @@ export async function importBackup(file: Uint8Array, password: string, checkBack
     currentNodeIds.value = { ...currentNodeIds.value, ...(manifest.nodes.current ?? {}) };
     await saveNodes();
   }
+  // the Trade table of cake.db
+  if (Array.isArray(manifest.trades)) await importTrades(manifest.trades);
   // ~_preferences_dump (importPreferencesDump), keeping this device's security state
   const pd = files['~_preferences_dump'];
   if (pd) {

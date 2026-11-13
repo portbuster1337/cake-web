@@ -364,7 +364,7 @@ function FeePicker({ w, current, custom, close }: { w: WalletBase; current: stri
 }
 
 /** ConfirmSwiper (lib/new-ui/widgets/confirm_swiper.dart) */
-function ConfirmSwiper({ label, onConfirm }: { label: string; onConfirm: () => void }) {
+export function ConfirmSwiper({ label, onConfirm }: { label: string; onConfirm: () => void }) {
   const [x, setX] = useState(0);
   const [drag, setDrag] = useState<{ start: number; max: number } | null>(null);
   return (

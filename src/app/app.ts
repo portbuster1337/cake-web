@@ -1,6 +1,7 @@
 // App lifecycle (AppStore + AuthenticationStore + WalletLoadingService in Cake):
 // boot, PIN setup/unlock/lock, wallet registry, opening/closing wallets.
 
+import { loadTrades, monitorActiveTrades, unloadTrades } from '../exchange/trades.ts';
 import { signal, computed } from '@preact/signals';
 import { vault } from '../core/vault.ts';
 import { db } from '../core/db.ts';
@@ -127,6 +128,7 @@ export async function unlock(pin: string): Promise<UnlockOutcome> {
   router.online = true;
   await loadNodes();
   await loadWalletInfos();
+  await loadTrades().catch(() => {});
   phase.value = 'ready';
   const id = settings.value.currentWalletId ?? walletInfos.value[0]?.id;
   if (id) void openWallet(id).catch((e) => (walletError.value = (e as Error).message));
@@ -151,6 +153,7 @@ export async function duressWipe(): Promise<void> {
   currentWallet.value = null;
   if (w) await w.close().catch(() => {});
   walletInfos.value = [];
+  unloadTrades();
   router.online = false;
   router.newIdentity();
   await vault.wipe();
@@ -162,6 +165,7 @@ export async function lock(): Promise<void> {
   const w = currentWallet.value;
   currentWallet.value = null;
   if (w) await w.close().catch(() => {});
+  unloadTrades();
   router.online = false;
   router.newIdentity();
   vault.lock();
@@ -274,6 +278,7 @@ export async function openWallet(id: string): Promise<WalletBase> {
     const w = await m.open(info, secrets);
     currentWallet.value = w;
     updateSettings({ currentWalletId: id });
+    monitorActiveTrades(id);
     void w.connect().then(() => w.startSync()).catch((e) => {
       w.syncStatus.value = { kind: 'failed', error: (e as Error).message };
     });

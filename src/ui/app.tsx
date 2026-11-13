@@ -3,7 +3,7 @@
 
 import { useEffect } from 'preact/hooks';
 import { stack, nav } from './nav.ts';
-import { routeComponent, Routes } from './routes.ts';
+import { isKeepAlive, routeComponent, Routes } from './routes.ts';
 import { Overlays } from './components/overlays.tsx';
 import { phase, walletInfos } from '../app/app.ts';
 import { WELCOME_PAGE } from './pages/onboarding.tsx';
@@ -33,7 +33,8 @@ export function App() {
   }
 
   const entries = stack.value;
-  const visible = entries.slice(-2);
+  // the top two, plus pages that keep their state while covered (the swap and its sub-pages)
+  const visible = entries.filter((r, i) => i >= entries.length - 2 || isKeepAlive(r.name));
   return (
     <>
       {visible.map((r, i) => {

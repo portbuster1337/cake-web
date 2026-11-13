@@ -531,6 +531,16 @@ export class UtxoWallet extends WalletBase {
     await this.save();
   }
 
+  /** getFreshAddress: the current receive address (hidden ones are skipped) */
+  async addressForExchange(): Promise<string> {
+    return this.currentReceiveAddress();
+  }
+
+  async hideAddressAfterExchange(address: string): Promise<void> {
+    await this.setAddressHidden(address, true);
+    this.receiveAddress.value = this.currentReceiveAddress();
+  }
+
   async setAddressHidden(address: string, hidden: boolean): Promise<void> {
     const r = this.state.addresses.find((a) => a.address === address);
     if (r) r.hidden = hidden;

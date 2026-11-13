@@ -21,7 +21,7 @@ export function validateWalletName(name: string): string | null {
   return null;
 }
 
-function iconFor(type: WalletType): string | undefined {
+export function iconFor(type: WalletType): string | undefined {
   if (type === 'base') return 'assets/new-ui/crypto_full_icons/base.svg';
   if (type === 'arbitrum') return 'assets/new-ui/crypto_full_icons/arbitrum.svg';
   if (type === 'robinhood') return 'assets/new-ui/crypto_full_icons/robinhood.svg';
