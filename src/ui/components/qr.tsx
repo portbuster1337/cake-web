@@ -17,7 +17,8 @@ export function qrBadge(type?: WalletType, lightning = false): string {
   return b ? `./cake/images/${b}` : './cake/images/qr-cake.png';
 }
 
-export function QrCode({ data, size = 220, logo, id }: { data: string; size?: number; logo?: string; id?: string }) {
+/** `size` in pixels, or "fill" for the whole box it is in */
+export function QrCode({ data, size = 220, logo, id }: { data: string; size?: number | 'fill'; logo?: string; id?: string }) {
   const qr = useMemo(() => encode(data || ' ', { ecc: 'H', border: 0 }), [data]);
   const n = qr.size;
   const rects: string[] = [];
@@ -34,11 +35,11 @@ export function QrCode({ data, size = 220, logo, id }: { data: string; size?: nu
   }
   const logoSize = n * 0.24;
   return (
-    <div id={id} data-qr={data} style={{ background: '#fff', borderRadius: '20px', padding: '12px', width: `${size}px`, height: `${size}px`, position: 'relative', flex: 'none' }}>
+    <div id={id} data-qr={data} style={{ background: '#fff', borderRadius: '20px', padding: '12px', width: size === 'fill' ? '100%' : `${size}px`, height: size === 'fill' ? '100%' : `${size}px`, boxSizing: size === 'fill' ? 'border-box' : undefined, position: 'relative', flex: 'none' }}>
       <svg viewBox={`0 0 ${n} ${n}`} width="100%" height="100%" shape-rendering="crispEdges" role="img" aria-label="QR code">
         <path d={rects.join('')} fill="#000" />
       </svg>
-      {logo && <img src={logo} alt="" style={{ position: 'absolute', left: '50%', top: '50%', width: `${(logoSize / n) * (size - 24)}px`, height: `${(logoSize / n) * (size - 24)}px`, transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: '8px', padding: '2px' }} />}
+      {logo && <img src={logo} alt="" style={{ position: 'absolute', left: '50%', top: '50%', width: size === 'fill' ? `${(logoSize / n) * 100}%` : `${(logoSize / n) * (size - 24)}px`, height: size === 'fill' ? `${(logoSize / n) * 100}%` : `${(logoSize / n) * (size - 24)}px`, transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: '8px', padding: '2px' }} />}
     </div>
   );
 }

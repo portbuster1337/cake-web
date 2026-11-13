@@ -445,13 +445,7 @@ function WalletKeysPage() {
           </div>
           <div class="rowx gap12">
             <Button secondary onClick={() => copyText(seed, t('copied_key_to_clipboard', { key: t('wallet_seed').toLowerCase() }))}>{t('copy')}</Button>
-            <Button onClick={() => showSheet((close) => (
-              <div class="col" style={{ alignItems: 'center', gap: '16px', padding: '0 18px 24px' }}>
-                <TopBar title={t('wallet_keys')} onClose={() => close()} />
-                <QrCode data={qrData} size={280} />
-                <div class="warning-box">{t('do_not_share_warning_text')}</div>
-              </div>
-            ))}>{`${t('show')} QR`}</Button>
+            <Button id="wallet_keys_page_show_qr_seeds_button_key" onClick={() => nav.push(Routes.fullscreenQR, { data: qrData })}>{`${t('show')} QR`}</Button>
           </div>
         </div>
       ) : (
@@ -463,6 +457,22 @@ function WalletKeysPage() {
   );
 }
 
+/** FullscreenQRPage: the code in a primary-bordered square, 90 % of the width */
+function FullscreenQrPage({ args }: { args: { data: string } }) {
+  return (
+    <Page legacy id="fullscreen_qr_page" bodyClass="">
+      <div style={{ padding: '0 5%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '100%', maxWidth: '480px', aspectRatio: '1', padding: '10px', border: '3px solid var(--primary)', borderRadius: '16px', background: 'var(--surface)', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', height: '100%', border: '3px solid var(--surface)', background: '#fff', boxSizing: 'border-box', display: 'flex' }}>
+            <QrCode data={args.data} size="fill" id="fullscreen_qr" />
+          </div>
+        </div>
+      </div>
+    </Page>
+  );
+}
+
+registerRoute(Routes.fullscreenQR, FullscreenQrPage);
 registerRoute(Routes.securityBackupPage, SecurityPage);
 registerRoute(Routes.setupDuressPin, (p: any) => {
   const C = routeComponent(Routes.setupPin);
