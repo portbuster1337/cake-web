@@ -7,7 +7,9 @@ import { t } from '../../../core/i18n.ts';
 import { Icon } from '../../components/core.tsx';
 import { registerRoute, Routes } from '../../routes.ts';
 import { settings } from '../../../app/settings.ts';
-import { currentWallet } from '../../../app/app.ts';
+import { currentWallet, getSecrets, walletInfos } from '../../../app/app.ts';
+import { isWeakSeed, parseWeakSeeds, weakSeedsNotice, WEAK_SEEDS_FILE } from '../../../app/weakSeeds.ts';
+import { showAlert } from '../../components/overlays.tsx';
 import { HomePage } from './home.tsx';
 import { WalletListPage } from './wallets.tsx';
 import { ContactListPage } from './contacts.tsx';
@@ -81,6 +83,23 @@ function NavBar() {
   );
 }
 
+/** _showVulnerableSeedsPopup: Bitcoin wallets whose recovery phrase is on Cake's list of weak seeds */
+async function showVulnerableSeedsPopup(): Promise<void> {
+  const btc = walletInfos.value.filter((w) => w.type === 'bitcoin');
+  if (!btc.length) return;
+  try {
+    const list = parseWeakSeeds(await (await fetch(WEAK_SEEDS_FILE, { credentials: 'same-origin' })).text());
+    const affected: string[] = [];
+    for (const w of btc) {
+      const m = (await getSecrets(w.id)).mnemonic;
+      if (m && isWeakSeed(list, m)) affected.push(w.name);
+    }
+    if (!affected.length) return;
+    await new Promise((ok) => setTimeout(ok, 1000));
+    await showAlert({ title: 'Emergency Notice', content: <div style={{ whiteSpace: 'pre-line', textAlign: 'start' }} id="vulnerable_seeds_notice">{weakSeedsNotice(affected)}</div>, right: t('close') });
+  } catch { /* the check is a courtesy */ }
+}
+
 function NewDashboard() {
   const sel = dashboardTab.value;
   // switching the active wallet resets to the Home tab
@@ -88,6 +107,7 @@ function NewDashboard() {
   useEffect(() => {
     dashboardTab.value = 0;
   }, [id]);
+  useEffect(() => void showVulnerableSeedsPopup(), []);
   const pages = [HomePage, WalletListPage, ContactListPage, CakeFeaturesPage, ChartsPage];
   return (
     <div class="page" id="dashboard">
