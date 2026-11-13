@@ -7,6 +7,7 @@ import { Icon, Img, ModernButton, Spinner, TopBar } from '../../components/core.
 import { showSheet } from '../../components/overlays.tsx';
 import { pickCurrency } from '../../components/currencyPicker.tsx';
 import { settings } from '../../../app/settings.ts';
+import { currentWallet } from '../../../app/app.ts';
 import { fetchHistory } from '../../../app/prices.ts';
 import { ALL_CURRENCIES, currency, type Currency } from '../../../coins/types.ts';
 import { vault } from '../../../core/vault.ts';
@@ -273,13 +274,20 @@ function ChartModal({ c, close }: { c: Currency; close: () => void }) {
   const [range, setRange] = useState('30D');
   const f = followed.value;
   const isFav = f.pinned === c.key;
+  // canOpenBuySell: the wallet's balances have this currency (its own coin: tokens are other currency objects there)
+  const canOpenBuySell = currentWallet.value?.currency.key === c.key;
   return (
     <div class="col" style={{ height: '100%', background: 'var(--surface)' }}>
       <TopBar onClose={close} />
       <div class="page-body" style={{ paddingBottom: '32px' }}>
         <ChartHeader c={c} range={range} setRange={setRange} height={220} />
         <div class="rowx" style={{ justifyContent: 'center', gap: '5%', marginTop: '48px' }}>
-          <ChartAction icon="plus.svg" label={t('buy')} onClick={() => { close(); nav.push(Routes.buySellPage, { currency: c.key }); }} />
+          {canOpenBuySell && (
+            <>
+              <ChartAction icon="plus.svg" label={t('buy')} onClick={() => { close(); nav.push(Routes.buySellPage, { mode: 'buy', currency: c.key }); }} />
+              <ChartAction icon="sell.svg" label={t('sell')} onClick={() => { close(); nav.push(Routes.buySellPage, { mode: 'sell', currency: c.key }); }} />
+            </>
+          )}
           <ChartAction icon="exchange.svg" label={t('swap')} onClick={() => { close(); nav.push(Routes.exchange, { to: c.key }); }} />
           <ChartAction icon="favorite.svg" label={t('favorite')} active={isFav} onClick={() => { void saveFollowed({ ...f, pinned: c.key }); close(); }} />
           {f.keys.length > 1 && <ChartAction icon="address_hide.svg" label={t('remove')} onClick={() => { void saveFollowed({ ...f, keys: f.keys.filter((k) => k !== c.key), pinned: f.pinned === c.key ? f.keys.find((k) => k !== c.key)! : f.pinned }); close(); }} />}

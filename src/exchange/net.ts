@@ -14,7 +14,9 @@ export interface ExResponse {
 }
 
 export interface ExOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT';
+  /** circuit scope (default "exchange") */
+  scope?: string;
   body?: unknown;
   headers?: Record<string, string>;
   timeoutMs?: number;
@@ -33,7 +35,7 @@ export async function exFetch(url: string, o: ExOptions = {}): Promise<ExRespons
     body = typeof o.body === 'string' ? o.body : JSON.stringify(o.body);
     if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) headers['Content-Type'] = 'application/json';
   }
-  const res = await request(url, body, { scope: 'exchange', method: o.method ?? (body !== undefined ? 'POST' : 'GET'), headers, timeoutMs: o.timeoutMs ?? 60_000, retries: o.retries ?? 1, purpose: o.purpose ?? 'swap', okStatuses: ANY_STATUS });
+  const res = await request(url, body, { scope: o.scope ?? 'exchange', method: o.method ?? (body !== undefined ? 'POST' : 'GET'), headers, timeoutMs: o.timeoutMs ?? 60_000, retries: o.retries ?? 1, purpose: o.purpose ?? 'swap', okStatuses: ANY_STATUS });
   const t = text(res);
   return {
     status: res.status,

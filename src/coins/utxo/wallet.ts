@@ -531,6 +531,13 @@ export class UtxoWallet extends WalletBase {
     await this.save();
   }
 
+  /** BitcoinWalletAddresses.addressForBuy: the account's first unused, visible P2WPKH address (else the receive address) */
+  addressForBuy(): string {
+    if (this.coin !== 'btc') return super.addressForBuy();
+    const a = this.state.addresses.find((r) => r.account === this.currentAccount.value && r.type === 'p2wpkh' && !r.change && !r.hidden && !r.used);
+    return a?.address ?? super.addressForBuy();
+  }
+
   /** getFreshAddress: the current receive address (hidden ones are skipped) */
   async addressForExchange(): Promise<string> {
     return this.currentReceiveAddress();
@@ -836,15 +843,17 @@ export class UtxoWallet extends WalletBase {
 
   // ----------------------------------------------------------- messages --
 
-  /** BIP137-style message signature (Bitcoin Signed Message), base64 */
+  /**
+   * ElectrumWallet.signMessage (ECPrivate.signMessage, signLitecoinMessage): a compact signature of the Signed Message
+   * hash, base64, with the compressed-key header 31–34 for every address type (no BIP-137 segwit header offset).
+   */
   async signMessage(message: string, address?: string): Promise<string> {
     const rec = this.state.addresses.find((a) => a.address === (address || this.receiveAddress.value)) ?? this.state.addresses[0];
     const c: ChainId = { type: rec.type, account: rec.account, change: rec.change, legacy: rec.legacy };
     const priv = this.tree.privkey(c, rec.index);
     const sig = secp256k1.sign(magicHash(message, this.coin), priv, { prehash: false, format: 'recovered' });
     // recovered format: [recovery, r(32), s(32)]
-    const recId = sig[0];
-    const header = 27 + recId + 4 + (rec.type === 'p2sh' ? 8 : rec.type === 'p2wpkh' ? 12 : 0);
+    const header = 27 + sig[0] + 4;
     return base64.encode(Uint8Array.from([header, ...sig.slice(1)]));
   }
 

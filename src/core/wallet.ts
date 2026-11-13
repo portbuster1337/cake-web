@@ -385,6 +385,11 @@ export abstract class WalletBase {
   /** make an address the receive address */
   selectReceiveAddress(_address: string): void {}
 
+  /** WalletAddresses.addressForBuy: where a buy/sell provider sends to (refunds to) */
+  addressForBuy(): string {
+    return this.receiveAddress.value;
+  }
+
   /** WalletAddresses.addressForExchange: the address a swap refunds to (or pays into, for this wallet's coin) */
   async addressForExchange(): Promise<string> {
     return this.receiveAddress.value;

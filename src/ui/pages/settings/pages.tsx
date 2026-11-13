@@ -173,7 +173,7 @@ function DisplayPage() {
   );
 }
 
-const FIAT_NAMES: Record<string, string> = {
+export const FIAT_NAMES: Record<string, string> = {
   AMD: 'Armenian Dram', ARS: 'Argentine Peso', AUD: 'Australian Dollar', BDT: 'Bangladeshi Taka', BGN: 'Bulgarian Lev', BRL: 'Brazilian Real', CAD: 'Canadian Dollar', CHF: 'Swiss Franc', CLP: 'Chilean Peso', CNY: 'Chinese Yuan',
   COP: 'Colombian Peso', CZK: 'Czech Koruna', DKK: 'Danish Krone', EGP: 'Egyptian Pound', EUR: 'Euro', GBP: 'Pound Sterling', GHS: 'Ghanaian Cedi', GTQ: 'Guatemalan Quetzal', HKD: 'Hong Kong Dollar', HRK: 'Croatian Kuna',
   HUF: 'Hungarian Forint', IDR: 'Indonesian Rupiah', ILS: 'Israeli New Shekel', INR: 'Indian Rupee', IRR: 'Iranian Rial', ISK: 'Icelandic Krona Króna', JPY: 'Japanese Yen', KRW: 'South Korean Won', MAD: 'Moroccan Dirham',
@@ -182,8 +182,13 @@ const FIAT_NAMES: Record<string, string> = {
   VND: 'Vietnamese Dong đồng', ZAR: 'South African Rand', TRY: 'Turkish Lira', KES: 'Kenyan Shillings',
 };
 
+/** FiatCurrencyPickerSheet: a fiat currency (the selected one marked) */
+export function chooseFiat(selected: string): Promise<string | undefined> {
+  return showSheet<string>((close) => <FiatPicker close={close} selected={selected} />, { full: true });
+}
+
 export function pickFiat() {
-  return showSheet<string>((close) => <FiatPicker close={close} />, { full: true }).then((v) => {
+  return chooseFiat(settings.value.fiatCurrency).then((v) => {
     if (v) {
       updateSettings({ fiatCurrency: v });
       resetPrices();
@@ -191,9 +196,9 @@ export function pickFiat() {
   });
 }
 
-function FiatPicker({ close }: { close: (v?: string) => void }) {
+function FiatPicker({ close, selected }: { close: (v?: string) => void; selected: string }) {
   const [q, setQ] = useState('');
-  const sel = settings.value.fiatCurrency;
+  const sel = selected;
   const ql = q.toLowerCase();
   const match = (c: string) => !ql || c.toLowerCase().includes(ql) || FIAT_NAMES[c].toLowerCase().includes(ql);
   const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CNY'].filter((c) => c !== sel && match(c));

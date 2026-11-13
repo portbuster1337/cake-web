@@ -1,5 +1,6 @@
 // NewHomePage (lib/new-ui/pages/home_page.dart).
 
+import { openBuySellSelector } from '../buy/buy.tsx';
 import { buildCsv, csvFileName, type CsvItem } from '../../../app/csv.ts';
 import { useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
@@ -182,7 +183,7 @@ function WalletHome({ w }: { w: WalletBase }) {
               hidden={hidden}
               onLongPress={toggleHidden}
               onMenu={() => nav.push(Routes.cardCustomizer)}
-              chips={!s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => nav.push(Routes.buySellPage)} /> : undefined}
+              chips={!s.disableTradeOption ? <CardChip label={t('buy')} combo={design.combo} onClick={() => void openBuySellSelector()} /> : undefined}
             />
             {hidden && s.hiddenBalanceToggles < 10 && <div class="muted" style={{ marginTop: '12px' }}>{t('long_press_show_balance')}</div>}
             {pending > 0n && !hidden && (

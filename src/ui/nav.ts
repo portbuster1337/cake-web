@@ -51,6 +51,13 @@ export const nav = {
     stack.value = [...base, { name, args, key: ++seq }];
     syncHash();
   },
+  /** Pop `fromName` and everything above it, then push `name` (close a modal flow, open a page in its place). */
+  replaceFrom(fromName: string, name: string, args?: any): void {
+    const i = stack.value.map((r) => r.name).lastIndexOf(fromName);
+    const base = i >= 0 ? stack.value.slice(0, i) : stack.value;
+    stack.value = [...base, { name, args, key: ++seq }];
+    syncHash();
+  },
   pop<T = unknown>(result?: T): void {
     const top = stack.value[stack.value.length - 1];
     if (stack.value.length > 1) stack.value = stack.value.slice(0, -1);
