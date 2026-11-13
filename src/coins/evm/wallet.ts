@@ -514,6 +514,13 @@ export class EvmWallet extends WalletBase implements TokenWallet {
   }
 
   /** eth_sendRawTransaction, first through Blink (MEV protection) on Ethereum/Base when its key is set */
+  /** getTransactionReceipt: true once mined and successful, false when it reverted, null while pending */
+  async transactionReceipt(hash: string): Promise<boolean | null> {
+    const r = await this.#rpc<{ status?: string } | null>('eth_getTransactionReceipt', [hash], 'receipt');
+    if (!r) return null;
+    return r.status === undefined ? true : fromQuantity(r.status) === 1n;
+  }
+
   /** eth_call: a contract's view, the raw result */
   async callContract(to: string, data: Uint8Array): Promise<string> {
     return this.#rpc<string>('eth_call', [{ from: this.address, to, data: hex(data) }, 'latest'], 'contract call');
@@ -523,19 +530,20 @@ export class EvmWallet extends WalletBase implements TokenWallet {
    * A call into a contract (an approval, a deposit…): the gas estimated by the node, the fee checked against the coin
    * balance, signed. `amount` is only what the confirmation shows (in `amountDecimals`).
    */
-  async createContractCall(to: string, data: Uint8Array, opts: { priority?: string; amount?: bigint; amountDecimals?: number } = {}): Promise<PendingTransaction> {
+  async createContractCall(to: string, data: Uint8Array, opts: { priority?: string; amount?: bigint; amountDecimals?: number; value?: bigint; record?: { currency: string; amount: bigint } } = {}): Promise<PendingTransaction> {
     const priority = this.#prio(opts.priority ?? this.defaultPriority());
-    const g = await this.#gasParams(priority, { to, value: 0n, data });
+    const value = opts.value ?? 0n;
+    const g = await this.#gasParams(priority, { to, value, data });
     const fee = g.gas * g.maxFeePerGas;
     const nativeAvail = this.balances.value[this.currency.key]?.available ?? 0n;
-    if (fee > nativeAvail) throw new Error(`Transaction failed due to insufficient ${this.currency.title} balance to cover the fees.`);
+    if (fee + value > nativeAvail) throw new Error(`Transaction failed due to insufficient ${this.currency.title} balance to cover the fees.`);
     const nonce = fromQuantity(await this.#rpc<string>('eth_getTransactionCount', [this.address, 'pending'], 'nonce'));
     const { raw, hash } = signTransaction(
       {
         chainId: this.chain.chainId,
         nonce,
         to,
-        value: 0n,
+        value,
         data,
         gasLimit: g.gas,
         ...(this.chain.eip1559 ? { maxFeePerGas: g.maxFeePerGas, maxPriorityFeePerGas: TIP[priority] * GWEI } : { gasPrice: g.maxFeePerGas }),
@@ -552,7 +560,7 @@ export class EvmWallet extends WalletBase implements TokenWallet {
       feeFormatted: formatFixed(fee, 18, { fractionDigits: 10 }),
       commit: async () => {
         await this.#broadcast(hex(raw));
-        this.#txs.set(hash, { id: hash, currency: this.currency.key, direction: 'outgoing', amount: 0n, fee, date: Date.now(), confirmations: 0, isPending: true, from: this.address, to });
+        this.#txs.set(hash, { id: hash, currency: opts.record?.currency ?? this.currency.key, direction: 'outgoing', amount: opts.record?.amount ?? value, fee, date: Date.now(), confirmations: 0, isPending: true, from: this.address, to });
         this.#publishTxs();
         await this.save();
         setTimeout(() => void this.#sync(false), 4_000);

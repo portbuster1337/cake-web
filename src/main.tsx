@@ -24,4 +24,5 @@ import * as tradesApi from './exchange/trades.ts';
 import * as cakePayApi from './cakepay/service.ts';
 import { router as netRouter } from './net/http.ts';
 import { nftViewModel } from './nft/nfts.ts';
-(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi, cakepay: cakePayApi, net: netRouter, nfts: nftViewModel };
+import * as bridgeApi from './integrations/bridge.ts';
+(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi, cakepay: cakePayApi, net: netRouter, nfts: nftViewModel, bridge: bridgeApi };

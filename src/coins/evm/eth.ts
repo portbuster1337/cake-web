@@ -231,6 +231,35 @@ export function encodeCall(selector: string, args: AbiArg[] = []): Uint8Array {
   return concatBytes(hexToBytes(selector), ...parts);
 }
 
+/** a value for encodeAbi: static words, dynamic bytes, and tuples of them */
+export type AbiValue = AbiArg | { bytes: Uint8Array } | { tuple: AbiValue[] };
+
+const isDynamic = (v: AbiValue): boolean => 'bytes' in v || ('tuple' in v && v.tuple.some(isDynamic));
+
+function staticAbi(v: AbiValue): Uint8Array {
+  if ('tuple' in v) return encodeAbi(v.tuple);
+  if ('bytes' in v) throw new Error('bytes are dynamic');
+  return encodeCall('', [v]);
+}
+
+/** Solidity's ABI encoding of a list of values: the heads (static values inline, offsets of dynamic ones), then the tails */
+export function encodeAbi(values: AbiValue[]): Uint8Array {
+  const heads: Uint8Array[] = [];
+  const tails: Uint8Array[] = [];
+  let offset = values.reduce((n, v) => n + (isDynamic(v) ? 32 : staticAbi(v).length), 0);
+  for (const v of values) {
+    if (!isDynamic(v)) {
+      heads.push(staticAbi(v));
+      continue;
+    }
+    const tail = 'bytes' in v ? concatBytes(pad32(bigBytes(BigInt(v.bytes.length))), v.bytes, new Uint8Array((32 - (v.bytes.length % 32)) % 32)) : encodeAbi((v as { tuple: AbiValue[] }).tuple);
+    heads.push(pad32(bigBytes(BigInt(offset))));
+    tails.push(tail);
+    offset += tail.length;
+  }
+  return concatBytes(...heads, ...tails);
+}
+
 /** the 4-byte selector of a function signature, e.g. "save(uint192,bool)" */
 export function selectorOf(signature: string): string {
   return bytesToHex(keccak_256(new TextEncoder().encode(signature)).subarray(0, 4));

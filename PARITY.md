@@ -75,6 +75,7 @@ The provider's checkout page opens in the browser from a button, outside the app
 | --- | --- | --- |
 | Cake Pay | ✅ keyless | Marketplace, e-mail login, card purchase paid from Bitcoin, Litecoin or Monero wallets, orders and their status. |
 | dEuro Savings | ✅ | Approve, deposit, withdraw, collect and reinvest through the Ethereum wallet. |
+| Bridge (USDT0) | ✅ | Cake's USDT bridge between Ethereum, Polygon and Arbitrum over LayerZero: amount, destination network, receiving wallet or address, LayerZero's fee from quoteSend, swipe to bridge, history and details with the status from LayerZero Scan. From Ethereum the approval is waited for before the bridge transaction (Tether only takes a new allowance from zero). |
 | Silent payments | ◐ | Sending to sp1 addresses; receiving needs a BIP-352 tweak server (Cake runs its own). |
 | NFTs | ✅ | Cake's NFTs tab (Ethereum, Base, Polygon, Arbitrum, BNB Smart Chain, Solana): listing, import, details, sending Solana NFTs. Moralis with the user's key; without one, Blockscout lists the EVM NFTs (not BNB Smart Chain), the wallet's token accounts the Solana ones, and EVM imports read the token contract. IPFS art and metadata come from gateways that still answer over Tor (ipfs.io, which Cake uses, retired in September 2026). |
 | WalletConnect | ❌ | The WalletConnect relay is a WebSocket, which cannot go through Tor here yet. |

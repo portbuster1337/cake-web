@@ -3,6 +3,7 @@
 // (edit_token_page.dart), Favorite token modal (favorite_token_modal.dart)
 // and the new-UI Asset details sheet (assets_history/asset_details_modal.dart).
 
+import { isUsdt0Token } from '../../integrations/usdt0.ts';
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
 import { Button, Check, Field, Icon, Img, MIcon, ModernButton, Page, Row, Section, Switch, ToggleRow, TopBar } from '../components/core.tsx';
@@ -276,6 +277,8 @@ function AssetDetails({ w, a, close }: { w: WalletBase; a: TokenAsset; close: ()
       <div class="rowx" style={{ gap: '20px', justifyContent: 'center' }}>
         <ModernButton svg="send.svg" size={60} iconSize={32} caption={t('send')} id="asset_send" onClick={() => go(Routes.send, { asset: a.key })} />
         {s.exchangeStatus !== 'disabled' && <ModernButton svg="exchange.svg" size={60} iconSize={32} caption={t('swap')} onClick={() => go(Routes.exchange, { from: a.key })} />}
+        {/* DashboardViewModel.showBridge: USDT0 on an EVM chain */}
+        {isUsdt0Token((w as { chainId?: number }).chainId ?? 0, a.address) && <ModernButton svg="bridge.svg" size={60} iconSize={32} caption="Bridge" id="asset_bridge" onClick={() => go(Routes.bridgeAmountPage, { asset: a })} />}
         <ModernButton svg="receive.svg" size={60} iconSize={32} caption={t('receive')} id="asset_receive" onClick={() => go(Routes.receive, { asset: a.key })} />
       </div>
     </div>
