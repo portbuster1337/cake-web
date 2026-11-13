@@ -4,7 +4,8 @@
 // then create a real trade (an order only: nothing is sent) to a fresh Monero
 // address, check the confirm sheet, the external-send view, the trade in the
 // history and its details page, and a status update.
-//   node test/e2e/swap-flow.mjs [--url http://127.0.0.1:8787/] [--no-trade] [--amount 0.01] [--coin bitcoin|litecoin|dogecoin] [--no-sync-wait] [--log]
+//   node test/e2e/swap-flow.mjs [--url http://127.0.0.1:8787/] [--no-trade] [--amount 0.01] [--coin bitcoin|litecoin|dogecoin]
+//     [--to <currency id>] [--provider <title, e.g. XOSwap, NearIntents>] [--receiver <address>] [--no-sync-wait] [--log]
 import fs from 'node:fs';
 import { launch } from './launch.mjs';
 
@@ -73,6 +74,16 @@ try {
   await wait(800);
   await shot('1-empty');
   step(`swap page: ${JSON.stringify(await vmState())}`);
+  // the receive currency (--to: a currency id, e.g. btc, usdcsol), through the view model
+  if (args.to) {
+    await page.evaluate((id) => {
+      const vm = window.__cw.swap;
+      const c = vm.currencies.value.find((x) => x.id === id);
+      if (!c) throw new Error(`no currency ${id}`);
+      vm.changeReceiveCurrency(c);
+    }, args.to);
+    await wait(500);
+  }
   // amount
   const amount = args.amount || '0.01';
   await page.type('#swap_page_deposit_amount_field_key', amount);
@@ -87,7 +98,14 @@ try {
   step(`provider selector: ${await page.$eval('#swap_provider_selector', (e) => e.innerText.replace(/\s+/g, ' ').slice(0, 300))}`);
   await shot('3-selector');
   await mark('3-selector');
-  await page.evaluate(() => window.__cw.nav.pop());
+  if (args.provider) {
+    // force a provider (--provider XOSwap / NearIntents …): its row in Change Provider
+    await click(`#swap_select_${args.provider.replace(/[^A-Za-z]/g, '')}`);
+    await page.waitForSelector('#swap_page');
+    await page.waitForFunction((p) => (document.querySelector('#swap_provider_preview')?.innerText ?? '').includes(p) && /≈ [1-9]|≈ 0\.0*[1-9]/.test(document.querySelector('#swap_provider_preview').innerText), { timeout: 90000 }, args.provider.replace(/([a-z])([A-Z])/g, '$1 $2')).catch(() => {});
+    await wait(1000);
+    step(`forced ${args.provider}: ${JSON.stringify(await vmState())}`);
+  } else await page.evaluate(() => window.__cw.nav.pop());
   // configure → providers
   await click('#swap_configure');
   await page.waitForSelector('#swap_options_page');
@@ -115,8 +133,11 @@ try {
   await wait(400);
   await shot('6-receiver');
   await mark('6-receiver');
-  const walletBtn = await page.$('#swap_address_selection button[id^="swap_wallet_"]');
-  if (walletBtn) await walletBtn.click();
+  const walletBtn = args.receiver ? null : await page.$('#swap_address_selection button[id^="swap_wallet_"]');
+  if (args.receiver) {
+    await page.type('#swap_receiver_address', args.receiver);
+    await click('#swap_receiver_submit');
+  } else if (walletBtn) await walletBtn.click();
   else {
     await page.type('#swap_receiver_address', xmr);
     await click('#swap_receiver_submit');
