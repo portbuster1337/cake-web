@@ -17,6 +17,8 @@ import { Routes } from '../../routes.ts';
 import { trades } from '../../../exchange/trades.ts';
 import { PROVIDERS, type Trade } from '../../../exchange/types.ts';
 import { TradeTile } from '../swap/trade.tsx';
+import { OrderTile } from '../cakepay/cakepay.tsx';
+import { orders, type OrderRecord } from '../../../cakepay/service.ts';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -128,7 +130,10 @@ export function HistoryTile({ w, tx, first, last, onClick, hidden }: { w: Wallet
   );
 }
 
-export type HistoryItem = { kind: 'tx'; tx: TransactionInfo } | { kind: 'trade'; trade: Trade };
+export type HistoryItem = { kind: 'tx'; tx: TransactionInfo } | { kind: 'trade'; trade: Trade } | { kind: 'order'; order: OrderRecord };
+
+/** OrderFilterStore.displayCakePay */
+export const orderFilter = signal(true);
 
 /** TradeFilterStore: the providers with a toggle (Jupiter has none), all shown at first */
 export const TRADE_FILTER_PROVIDERS = [PROVIDERS.changeNow, PROVIDERS.sideShift, PROVIDERS.simpleSwap, PROVIDERS.trocador, PROVIDERS.exolix, PROVIDERS.chainflip, PROVIDERS.thorChain, PROVIDERS.whyNot, PROVIDERS.stealthEx, PROVIDERS.xoSwap, PROVIDERS.swapTrade, PROVIDERS.swapsXyz, PROVIDERS.nearIntents];
@@ -156,23 +161,29 @@ export function tradesForWallet(w: WalletBase): Trade[] {
 }
 
 /** formattedItemsList: transactions and trades by date, newest first (pending transactions keep their place on top) */
+/** DashboardViewModel.orders + OrderFilterStore.filtered: this wallet's Cake Pay orders */
+export function ordersForWallet(w: WalletBase): OrderRecord[] {
+  return orderFilter.value ? orders.value.filter((o) => o.walletId === w.id) : [];
+}
+
+/** formattedItemsList: transactions, trades and orders by date, newest first (pending transactions keep their place on top) */
 export function historyItems(w: WalletBase, txs: TransactionInfo[]): HistoryItem[] {
-  const tr = tradesForWallet(w).map((trade) => ({ kind: 'trade' as const, trade }));
+  const others: HistoryItem[] = [...tradesForWallet(w).map((trade) => ({ kind: 'trade' as const, trade })), ...ordersForWallet(w).map((order) => ({ kind: 'order' as const, order }))].sort((a, b) => itemDate(b) - itemDate(a));
   const out: HistoryItem[] = [];
   let ti = 0;
   for (const tx of txs) {
-    while (ti < tr.length && !tx.isPending && (tr[ti].trade.createdAt ?? 0) >= tx.date) out.push(tr[ti++]);
+    while (ti < others.length && !tx.isPending && itemDate(others[ti]) >= tx.date) out.push(others[ti++]);
     out.push({ kind: 'tx', tx });
   }
-  while (ti < tr.length) out.push(tr[ti++]);
+  while (ti < others.length) out.push(others[ti++]);
   return out;
 }
 
-const itemDate = (it: HistoryItem) => (it.kind === 'tx' ? it.tx.date : it.trade.createdAt ?? Date.now());
+const itemDate = (it: HistoryItem) => (it.kind === 'tx' ? it.tx.date : it.kind === 'trade' ? it.trade.createdAt ?? Date.now() : it.order.createdAt);
 
 export function HistoryList({ w, txs, items: given, grouped, hidden }: { w: WalletBase; txs: TransactionInfo[]; items?: HistoryItem[]; grouped?: boolean; hidden?: boolean }) {
   const items = given ?? historyItems(w, txs);
-  const tile = (it: HistoryItem, first: boolean, last: boolean) => (it.kind === 'tx' ? <HistoryTile w={w} tx={it.tx} first={first} last={last} hidden={hidden} onClick={() => openTxDetails(w, it.tx)} /> : <TradeTile trade={it.trade} first={first} last={last} hidden={hidden} />);
+  const tile = (it: HistoryItem, first: boolean, last: boolean) => (it.kind === 'tx' ? <HistoryTile w={w} tx={it.tx} first={first} last={last} hidden={hidden} onClick={() => openTxDetails(w, it.tx)} /> : it.kind === 'trade' ? <TradeTile trade={it.trade} first={first} last={last} hidden={hidden} /> : <OrderTile order={it.order} first={first} last={last} hidden={hidden} date={historyDate(it.order.createdAt)} />);
   if (!grouped) {
     return <div class="col">{items.map((it, i) => tile(it, i === 0, i === items.length - 1))}</div>;
   }

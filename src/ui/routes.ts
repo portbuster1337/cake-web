@@ -78,6 +78,7 @@ export const Routes = {
   cakePayCardsPage: '/cake_pay_cards_page',
   cakePayBuyCardPage: '/cake_pay_buy_card_page',
   cakePayAccountPage: '/cake_pay_account_page',
+  cakePayVerifyOtpPage: '/cake_pay_verify_otp_page',
   webViewPage: '/web_view_page',
   silentPaymentsSettings: '/silent_payments_settings',
   mwebSettings: '/mweb_settings',

@@ -2,6 +2,7 @@
 // boot, PIN setup/unlock/lock, wallet registry, opening/closing wallets.
 
 import { loadTrades, monitorActiveTrades, unloadTrades } from '../exchange/trades.ts';
+import { loadOrders, unloadOrders } from '../cakepay/service.ts';
 import { signal, computed } from '@preact/signals';
 import { vault } from '../core/vault.ts';
 import { db } from '../core/db.ts';
@@ -129,6 +130,7 @@ export async function unlock(pin: string): Promise<UnlockOutcome> {
   await loadNodes();
   await loadWalletInfos();
   await loadTrades().catch(() => {});
+  await loadOrders().catch(() => {});
   phase.value = 'ready';
   const id = settings.value.currentWalletId ?? walletInfos.value[0]?.id;
   if (id) void openWallet(id).catch((e) => (walletError.value = (e as Error).message));
@@ -154,6 +156,7 @@ export async function duressWipe(): Promise<void> {
   if (w) await w.close().catch(() => {});
   walletInfos.value = [];
   unloadTrades();
+  unloadOrders();
   router.online = false;
   router.newIdentity();
   await vault.wipe();
@@ -166,6 +169,7 @@ export async function lock(): Promise<void> {
   currentWallet.value = null;
   if (w) await w.close().catch(() => {});
   unloadTrades();
+  unloadOrders();
   router.online = false;
   router.newIdentity();
   vault.lock();

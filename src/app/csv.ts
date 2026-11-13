@@ -4,7 +4,8 @@
 
 import { formatFixed } from '../core/amount.ts';
 import type { TransactionInfo, WalletBase } from '../core/wallet.ts';
-import { stateOf, providerByRaw, type Trade } from '../exchange/types.ts';
+import { formatTradeAmount, stateOf, providerByRaw, type Trade } from '../exchange/types.ts';
+import type { OrderRecord } from '../cakepay/service.ts';
 
 export const CSV_COLUMNS = ['record_type', 'date_time', 'type', 'amount', 'currency', 'fee', 'tx_id', 'address', 'status', 'note', 'from_amount', 'from_currency', 'to_amount', 'to_currency', 'trade_id', 'provider', 'confirmations'];
 
@@ -27,7 +28,7 @@ const row = (fields: string[]) => fields.map(csvField).join(',');
 /** DateTime.toUtc().toIso8601String(): milliseconds, "Z" */
 const iso = (ms: number) => new Date(ms).toISOString();
 
-export type CsvItem = { kind: 'tx'; tx: TransactionInfo; amount: string; symbol: string; note: string } | { kind: 'trade'; trade: Trade };
+export type CsvItem = { kind: 'tx'; tx: TransactionInfo; amount: string; symbol: string; note: string } | { kind: 'trade'; trade: Trade } | { kind: 'order'; order: OrderRecord };
 
 function txRow(w: WalletBase, it: Extract<CsvItem, { kind: 'tx' }>): string {
   const tx = it.tx;
@@ -40,9 +41,15 @@ function tradeRow(t: Trade): string {
   return row(['trade', iso(t.createdAt ?? 0), 'swap', '', '', t.fee !== undefined ? String(t.fee) : '', t.outputTransaction ?? '', t.payoutAddress ?? '', stateOf(t.stateRaw).title, t.memo ?? '', t.amount, t.from?.name ?? '', t.receiveAmount ?? '', t.to?.name ?? '', t.id, providerByRaw(t.providerRaw)?.title ?? '', '']);
 }
 
+/** _orderRow: "Order" (the source), the amount paid, Cake Pay */
+function orderRow(o: OrderRecord): string {
+  const amount = `${formatTradeAmount(o.amount)} ${o.from ?? ''}`;
+  return row(['order', iso(o.createdAt), 'Order', amount, o.from ?? '', '', o.transferId, '', stateOf(o.stateRaw).title, '', amount, o.from ?? '', o.receiveAmount ?? '', o.to ?? '', o.id, 'Cake Pay', '']);
+}
+
 /** buildCsvContent */
 export function buildCsv(w: WalletBase, items: CsvItem[]): string {
-  const lines = [CSV_COLUMNS.join(','), ...items.map((it) => (it.kind === 'tx' ? txRow(w, it) : tradeRow(it.trade)))];
+  const lines = [CSV_COLUMNS.join(','), ...items.map((it) => (it.kind === 'tx' ? txRow(w, it) : it.kind === 'trade' ? tradeRow(it.trade) : orderRow(it.order)))];
   return `\uFEFF${lines.join('\n')}\n`;
 }
 

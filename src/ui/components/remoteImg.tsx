@@ -37,7 +37,8 @@ export function torImageUrl(url: string): Promise<string | null> {
 const isRemote = (s: string | null | undefined) => !!s && /^https?:\/\//i.test(s);
 
 /** an image path of the app's assets, or a remote URL loaded over Tor (the fallback until then, or if it fails) */
-export function RemoteImg({ src, size = 24, fallback, round }: { src?: string | null; size?: number; fallback?: string; round?: boolean }) {
+export function RemoteImg({ src, size = 24, fallback, round, cover }: { src?: string | null; size?: number; fallback?: string; round?: boolean; cover?: boolean }) {
+  const style = cover ? { width: '100%', height: '100%', objectFit: 'cover' as const } : undefined;
   const remote = isRemote(src);
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -49,6 +50,6 @@ export function RemoteImg({ src, size = 24, fallback, round }: { src?: string | 
     };
   }, [src]);
   if (!remote) return <Img src={src ?? fallback} size={size} round={round} />;
-  if (url) return <Img src={url} size={size} round={round} />;
+  if (url) return <Img src={url} size={size} round={round} style={style} />;
   return fallback ? <Img src={fallback} size={size} round={round} /> : <span style={{ display: 'inline-block', width: `${size}px`, height: `${size}px`, flex: 'none' }} />;
 }

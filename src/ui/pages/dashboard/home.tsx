@@ -14,7 +14,7 @@ import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl } from '../../../coins/types.ts';
 import { BalanceCard, CardChip, cardStyleKey, designFromStyle } from './cards.tsx';
-import { HistoryList, historyItems, getTxNotes, txAsset, tradesForWallet, tradeFilter, tradeFilterCount, displayAllTrades, toggleAllTrades, resetTradeFilter, TRADE_FILTER_PROVIDERS, type HistoryItem } from './history.tsx';
+import { HistoryList, historyItems, getTxNotes, txAsset, orderFilter, ordersForWallet, tradesForWallet, tradeFilter, tradeFilterCount, displayAllTrades, toggleAllTrades, resetTradeFilter, TRADE_FILTER_PROVIDERS, type HistoryItem } from './history.tsx';
 import { nav } from '../../nav.ts';
 import { Routes } from '../../routes.ts';
 import { useEffect } from 'preact/hooks';
@@ -320,7 +320,7 @@ function HistoryFilters({ close }: { close: () => void }) {
       </div>
     );
   }
-  const allTypes = f.send && f.receive && displayAllTrades();
+  const allTypes = f.send && f.receive && displayAllTrades() && orderFilter.value;
   return (
     <div style={{ padding: '0 18px 24px' }}>
       <TopBar title={t('filters')} onBack={close} />
@@ -330,6 +330,7 @@ function HistoryFilters({ close }: { close: () => void }) {
           const on = !allTypes;
           set({ send: on, receive: on });
           if (displayAllTrades() !== on) toggleAllTrades();
+          orderFilter.value = on;
         }}>{allTypes ? t('unselect_all') : t('select_all')}</button>
       </div>
       <div class="list">
@@ -343,9 +344,10 @@ function HistoryFilters({ close }: { close: () => void }) {
           <span onClick={(e) => { e.stopPropagation(); toggleAllTrades(); }}>{check(swapOn)}</span>
           <Icon src="arrow_forward.svg" w={8} h={14} color="var(--on-surface-variant)" />
         </div>
+        <div class="row tap" id="history_filter_cake_pay" onClick={() => (orderFilter.value = !orderFilter.value)}><span class="lbl">Cake Pay</span>{check(orderFilter.value)}</div>
       </div>
       <div style={{ height: '18px' }} />
-      <button type="button" class="btn secondary" onClick={() => { historyFilter.value = { send: true, receive: true }; resetTradeFilter(); close(); }}>{t('reset_filters')}</button>
+      <button type="button" class="btn secondary" onClick={() => { historyFilter.value = { send: true, receive: true }; resetTradeFilter(); orderFilter.value = true; close(); }}>{t('reset_filters')}</button>
     </div>
   );
 }
@@ -354,6 +356,7 @@ function HistoryModal({ w, close }: { w: WalletBase; close: () => void }) {
   useEffect(() => () => {
     historyFilter.value = { send: true, receive: true };
     resetTradeFilter();
+    orderFilter.value = true;
   }, []);
   const filter = historyFilter.value;
   const txs = w.transactions.value.filter((x) => (x.direction === 'incoming' ? filter.receive : filter.send));
@@ -366,7 +369,7 @@ function HistoryModal({ w, close }: { w: WalletBase; close: () => void }) {
     }
     const notes = await getTxNotes(w.id);
     const rows: CsvItem[] = items.map((it) => {
-      if (it.kind === 'trade') return it;
+      if (it.kind !== 'tx') return it;
       const a = txAsset(w, it.tx);
       return { kind: 'tx', tx: it.tx, amount: formatFixed(it.tx.amount, a.decimals), symbol: a.symbol, note: notes[it.tx.id] ?? '' };
     });
@@ -381,7 +384,7 @@ function HistoryModal({ w, close }: { w: WalletBase; close: () => void }) {
     <div class="col" style={{ height: '100%', background: 'var(--surface)' }} id="history_modal">
       <TopBar title={t('history')} onClose={close} trailing={<ModernButton svg="tx_export.svg" size={36} label={t('export_csv')} onClick={exportCsv} />} />
       <div class="page-body" style={{ padding: '0 16px 144px' }}>
-        {txs.length || tradesForWallet(w).length ? <HistoryList w={w} txs={txs} grouped hidden={settings.value.balanceDisplayMode === 'hiddenBalance'} /> : <div class="muted center" style={{ paddingTop: '24px' }}>{t('transactions_will_appear_here')}</div>}
+        {txs.length || tradesForWallet(w).length || ordersForWallet(w).length ? <HistoryList w={w} txs={txs} grouped hidden={settings.value.balanceDisplayMode === 'hiddenBalance'} /> : <div class="muted center" style={{ paddingTop: '24px' }}>{t('transactions_will_appear_here')}</div>}
       </div>
       <div style={{ position: 'absolute', left: '12px', right: '12px', bottom: '24px' }}>
         <button

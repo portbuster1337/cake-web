@@ -109,6 +109,8 @@ export interface Settings {
   exchangeProvidersSelection: Record<string, boolean>;
   trocadorProviderStates: Record<string, boolean>;
   decentralizedOnly: boolean;
+  /** current_cake_pay_country: the Cake Pay country (alpha-3), null until picked */
+  selectedCakePayCountry: string | null;
   /** user-supplied API keys for providers that need one */
   apiKeys: Record<string, string>;
   /** home screen tokens display */
@@ -215,6 +217,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultSellProviders: {},
   exchangeProvidersSelection: {},
   trocadorProviderStates: {},
+  selectedCakePayCountry: null,
   decentralizedOnly: false,
   apiKeys: {},
   showTokensTab: true,

@@ -21,4 +21,5 @@ import * as appApi from './app/app.ts';
 import { settings as settingsSignal } from './app/settings.ts';
 import { nav as navApi } from './ui/nav.ts';
 import * as tradesApi from './exchange/trades.ts';
-(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi };
+import * as cakePayApi from './cakepay/service.ts';
+(globalThis as any).__cw = { app: appApi, settings: settingsSignal, nav: navApi, trades: tradesApi, cakepay: cakePayApi };
