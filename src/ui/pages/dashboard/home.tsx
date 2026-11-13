@@ -1,10 +1,11 @@
 // NewHomePage (lib/new-ui/pages/home_page.dart).
 
+import { buildCsv, csvFileName, type CsvItem } from '../../../app/csv.ts';
 import { useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { t } from '../../../core/i18n.ts';
 import { Icon, Img, MIcon, ModernButton, TopBar, Spinner } from '../../components/core.tsx';
-import { showAlert, showSheet } from '../../components/overlays.tsx';
+import { showAlert, showSheet, toast } from '../../components/overlays.tsx';
 import { currentWallet, walletLoading, walletError, torStatus } from '../../../app/app.ts';
 import { settings, updateSettings } from '../../../app/settings.ts';
 import { isSynced, syncProgress, syncStatusTitle, type WalletBase } from '../../../core/wallet.ts';
@@ -12,7 +13,7 @@ import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl } from '../../../coins/types.ts';
 import { BalanceCard, CardChip, cardStyleKey, designFromStyle } from './cards.tsx';
-import { HistoryList, historyItems, tradesForWallet, type HistoryItem } from './history.tsx';
+import { HistoryList, historyItems, getTxNotes, txAsset, tradesForWallet, tradeFilter, tradeFilterCount, displayAllTrades, toggleAllTrades, resetTradeFilter, TRADE_FILTER_PROVIDERS, type HistoryItem } from './history.tsx';
 import { nav } from '../../nav.ts';
 import { Routes } from '../../routes.ts';
 import { useEffect } from 'preact/hooks';
@@ -294,35 +295,86 @@ export function openHistoryModal(w: WalletBase) {
 const historyFilter = signal({ send: true, receive: true });
 
 function HistoryFilters({ close }: { close: () => void }) {
+  const [providers, setProviders] = useState(false);
   const f = historyFilter.value;
   const set = (p: Partial<typeof f>) => (historyFilter.value = { ...historyFilter.value, ...p });
+  const count = tradeFilterCount();
+  const swapOn = count > 0;
+  const check = (on: boolean) => <span class={`check${on ? ' on' : ''}`}>{on && <MIcon name="check" size={18} />}</span>;
+  if (providers) {
+    // HistorySwapProvidersPage
+    const tf = tradeFilter.value;
+    return (
+      <div style={{ padding: '0 18px 24px' }} id="history_swap_providers">
+        <TopBar title={t('filter_swap_providers')} onBack={() => setProviders(false)} />
+        <div class="rowx" style={{ justifyContent: 'space-between', padding: '0 4px 12px' }}>
+          <span class="muted">{t('swap_providers')}</span>
+          <button type="button" class="link-btn" style={{ width: 'auto', minHeight: 0 }} onClick={toggleAllTrades}>{displayAllTrades() ? t('unselect_all') : t('select_all')}</button>
+        </div>
+        <div class="list">
+          {TRADE_FILTER_PROVIDERS.map((p) => (
+            <div class="row tap" onClick={() => (tradeFilter.value = { ...tradeFilter.value, [p.raw]: !tf[p.raw] })}><span class="lbl">{p.title}</span>{check(!!tf[p.raw])}</div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  const allTypes = f.send && f.receive && displayAllTrades();
   return (
     <div style={{ padding: '0 18px 24px' }}>
       <TopBar title={t('filters')} onBack={close} />
       <div class="rowx" style={{ justifyContent: 'space-between', padding: '0 4px 12px' }}>
         <span class="muted">{t('type')}</span>
-        <button type="button" class="link-btn" style={{ width: 'auto', minHeight: 0 }} onClick={() => set({ send: !(f.send && f.receive), receive: !(f.send && f.receive) })}>{f.send && f.receive ? t('unselect_all') : t('select_all')}</button>
+        <button type="button" class="link-btn" style={{ width: 'auto', minHeight: 0 }} onClick={() => {
+          const on = !allTypes;
+          set({ send: on, receive: on });
+          if (displayAllTrades() !== on) toggleAllTrades();
+        }}>{allTypes ? t('unselect_all') : t('select_all')}</button>
       </div>
       <div class="list">
-        <div class="row tap" onClick={() => set({ send: !f.send })}><span class="lbl">{t('send')}</span><span class={`check${f.send ? ' on' : ''}`}>{f.send && <MIcon name="check" size={18} />}</span></div>
-        <div class="row tap" onClick={() => set({ receive: !f.receive })}><span class="lbl">{t('receive')}</span><span class={`check${f.receive ? ' on' : ''}`}>{f.receive && <MIcon name="check" size={18} />}</span></div>
+        <div class="row tap" onClick={() => set({ send: !f.send })}><span class="lbl">{t('send')}</span>{check(f.send)}</div>
+        <div class="row tap" onClick={() => set({ receive: !f.receive })}><span class="lbl">{t('receive')}</span>{check(f.receive)}</div>
+        <div class="row tap" id="history_filter_swap" onClick={() => setProviders(true)}>
+          <span class="lbl">
+            <span>{t('swap')}</span>
+            <span class="sub" style={{ color: displayAllTrades() ? undefined : count === 0 ? '#FFB84E' : 'var(--primary)' }}>{displayAllTrades() ? t('manage_providers') : count === 0 ? t('no_providers_selected') : `${count} ${t('providers')}`}</span>
+          </span>
+          <span onClick={(e) => { e.stopPropagation(); toggleAllTrades(); }}>{check(swapOn)}</span>
+          <Icon src="arrow_forward.svg" w={8} h={14} color="var(--on-surface-variant)" />
+        </div>
       </div>
       <div style={{ height: '18px' }} />
-      <button type="button" class="btn secondary" onClick={() => { historyFilter.value = { send: true, receive: true }; close(); }}>{t('reset_filters')}</button>
+      <button type="button" class="btn secondary" onClick={() => { historyFilter.value = { send: true, receive: true }; resetTradeFilter(); close(); }}>{t('reset_filters')}</button>
     </div>
   );
 }
 
 function HistoryModal({ w, close }: { w: WalletBase; close: () => void }) {
-  useEffect(() => () => void (historyFilter.value = { send: true, receive: true }), []);
+  useEffect(() => () => {
+    historyFilter.value = { send: true, receive: true };
+    resetTradeFilter();
+  }, []);
   const filter = historyFilter.value;
   const txs = w.transactions.value.filter((x) => (x.direction === 'incoming' ? filter.receive : filter.send));
-  const exportCsv = () => {
-    const rows = [['date', 'type', 'amount', 'currency', 'fee', 'txid'], ...w.transactions.value.map((x) => [new Date(x.date).toISOString(), x.direction, formatFixed(x.amount, x.tokenDecimals ?? w.currency.decimals), x.tokenSymbol ?? w.currency.title, x.fee !== undefined ? formatFixed(x.fee, w.currency.decimals) : '', x.id])];
+  // CsvExportService.exportToCsv: the list as filtered, transactions and swaps
+  const exportCsv = async () => {
+    const items = historyItems(w, txs);
+    if (!items.length) {
+      toast(t('csv_nothing_to_export'));
+      return;
+    }
+    const notes = await getTxNotes(w.id);
+    const rows: CsvItem[] = items.map((it) => {
+      if (it.kind === 'trade') return it;
+      const a = txAsset(w, it.tx);
+      return { kind: 'tx', tx: it.tx, amount: formatFixed(it.tx.amount, a.decimals), symbol: a.symbol, note: notes[it.tx.id] ?? '' };
+    });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' }));
-    a.download = `${w.name}_history.csv`;
+    const url = URL.createObjectURL(new Blob([buildCsv(w, rows)], { type: 'text/csv' }));
+    a.href = url;
+    a.download = csvFileName();
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   };
   return (
     <div class="col" style={{ height: '100%', background: 'var(--surface)' }} id="history_modal">
@@ -335,6 +387,7 @@ function HistoryModal({ w, close }: { w: WalletBase; close: () => void }) {
           type="button"
           class="rowx gap8"
           style={{ width: '100%', height: '56px', borderRadius: '18px', background: 'var(--surface-container)', border: '1px solid var(--primary)', color: 'var(--primary)', justifyContent: 'center', fontWeight: 500, cursor: 'pointer' }}
+          id="history_filters_button"
           onClick={() => showSheet((c2) => <HistoryFilters close={() => c2()} />)}
         >
           <Icon src="filter_options.svg" size={20} />

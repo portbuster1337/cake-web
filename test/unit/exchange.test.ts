@@ -137,3 +137,23 @@ test('Solana: a provider-built transaction gets our signature in our signer slot
   const { bytes } = compileMessage([systemTransfer(other, me, 1n)], other, '11111111111111111111111111111111', 0);
   assert.throws(() => signSerializedTransaction(new Uint8Array([...shortvec(1), ...new Uint8Array(64), ...bytes]), seed), /not for this wallet/);
 });
+
+test('CSV export: Cake columns, trade rows, formula neutralizing, quoting', async () => {
+  const { buildCsv, csvField, CSV_COLUMNS, csvFileName } = await import('../../src/app/csv.ts');
+  assert.equal(CSV_COLUMNS.length, 17);
+  assert.equal(csvField('=SUM(A1)'), "'=SUM(A1)");
+  assert.equal(csvField('-5'), '-5');
+  assert.equal(csvField('-x'), "'-x");
+  assert.equal(csvField('a,b'), '"a,b"');
+  assert.equal(csvField('say "hi"'), '"say ""hi"""');
+  const w = { currency: { decimals: 8 } } as any;
+  const out = buildCsv(w, [
+    { kind: 'tx', tx: { id: 'tx1', currency: 'btc', direction: 'outgoing', amount: 150000000n, fee: 1000n, date: Date.UTC(2026, 0, 2, 3, 4, 5), confirmations: 3, isPending: false, to: 'bc1qdest' }, amount: '1.5', symbol: 'BTC', note: 'rent' },
+    { kind: 'trade', trade: { id: 'T1', providerRaw: 9, stateRaw: 'finished', amount: '1', receiveAmount: '127.5', from: builtin('btc'), to: builtin('xmr'), createdAt: Date.UTC(2026, 0, 1), payoutAddress: '4abc' } },
+  ]);
+  const lines = out.split('\n');
+  assert.equal(lines[0], `\uFEFF${CSV_COLUMNS.join(',')}`);
+  assert.equal(lines[1], 'transaction,2026-01-02T03:04:05.000Z,outgoing,1.5,BTC,0.00001,tx1,bc1qdest,confirmed,rent,,,,,,,3');
+  assert.equal(lines[2], 'trade,2026-01-01T00:00:00.000Z,swap,,,,,4abc,Finished,,1,btc,127.5,xmr,T1,SwapTrade,');
+  assert.match(csvFileName(new Date(2026, 10, 13, 9, 5, 7)), /^cake_wallet_export_20261113_090507\.csv$/);
+});

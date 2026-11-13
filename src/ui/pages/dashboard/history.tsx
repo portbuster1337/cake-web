@@ -1,6 +1,7 @@
 // History list and transaction details (lib/new-ui/widgets/coins_page/assets_history/*).
 
 import { useEffect, useState } from 'preact/hooks';
+import { signal } from '@preact/signals';
 import { t } from '../../../core/i18n.ts';
 import { AddressText, Icon, Img, Row, Section, TopBar, copyText } from '../../components/core.tsx';
 import { showSheet } from '../../components/overlays.tsx';
@@ -14,7 +15,7 @@ import { nav } from '../../nav.ts';
 import { isTokenWallet } from '../../../coins/tokens.ts';
 import { Routes } from '../../routes.ts';
 import { trades } from '../../../exchange/trades.ts';
-import type { Trade } from '../../../exchange/types.ts';
+import { PROVIDERS, type Trade } from '../../../exchange/types.ts';
 import { TradeTile } from '../swap/trade.tsx';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -129,11 +130,29 @@ export function HistoryTile({ w, tx, first, last, onClick, hidden }: { w: Wallet
 
 export type HistoryItem = { kind: 'tx'; tx: TransactionInfo } | { kind: 'trade'; trade: Trade };
 
+/** TradeFilterStore: the providers with a toggle (Jupiter has none), all shown at first */
+export const TRADE_FILTER_PROVIDERS = [PROVIDERS.changeNow, PROVIDERS.sideShift, PROVIDERS.simpleSwap, PROVIDERS.trocador, PROVIDERS.exolix, PROVIDERS.chainflip, PROVIDERS.thorChain, PROVIDERS.whyNot, PROVIDERS.stealthEx, PROVIDERS.xoSwap, PROVIDERS.swapTrade, PROVIDERS.swapsXyz, PROVIDERS.nearIntents];
+const allTradeFilters = (on: boolean): Record<number, boolean> => Object.fromEntries([...TRADE_FILTER_PROVIDERS, PROVIDERS.xmrto, PROVIDERS.morphToken].map((p) => [p.raw, on]));
+export const tradeFilter = signal<Record<number, boolean>>(allTradeFilters(true));
+export const tradeFilterCount = () => TRADE_FILTER_PROVIDERS.filter((p) => tradeFilter.value[p.raw]).length;
+export const displayAllTrades = () => tradeFilterCount() === TRADE_FILTER_PROVIDERS.length;
+/** toggleDisplayExchange(ExchangeProviderDescription.all) */
+export function toggleAllTrades(): void {
+  tradeFilter.value = allTradeFilters(!displayAllTrades());
+}
+export function resetTradeFilter(): void {
+  tradeFilter.value = allTradeFilters(true);
+}
+
 /** DashboardViewModel.trades + TradeFilterStore.filtered: this wallet's trades (same chain, same account) */
 export function tradesForWallet(w: WalletBase): Trade[] {
   const chainId = (w as { chainId?: number }).chainId;
   const own = new Set([...w.addresses.value.map((a) => a.address), w.receiveAddress.value]);
-  return trades.value.filter((x) => x.walletId === w.id && (x.chainId === undefined || x.chainId === null || x.chainId === chainId) && (!x.fromWalletAddress || own.has(x.fromWalletAddress)));
+  const list = trades.value.filter((x) => x.walletId === w.id && (x.chainId === undefined || x.chainId === null || x.chainId === chainId) && (!x.fromWalletAddress || own.has(x.fromWalletAddress)));
+  if (displayAllTrades()) return list;
+  // QUIRK: with any toggle off, trades of providers without one (Jupiter) disappear too
+  const f = tradeFilter.value;
+  return list.filter((x) => f[x.providerRaw] === true);
 }
 
 /** formattedItemsList: transactions and trades by date, newest first (pending transactions keep their place on top) */
