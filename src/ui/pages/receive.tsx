@@ -15,7 +15,9 @@ import { settings, updateSettings } from '../../app/settings.ts';
 import { receiveUri } from '../../core/paymentUri.ts';
 import { isEvm, WALLET_TYPE_NAME } from '../../coins/types.ts';
 import { formatFixed, tryParseFixed } from '../../core/amount.ts';
-import { apiString, fiatValue, formatFiatAmount } from '../../app/prices.ts';
+import { apiString, fetchPrice, fiatValue, formatFiatAmount, prices } from '../../app/prices.ts';
+import { signal } from '@preact/signals';
+import { chooseFiat } from './settings/pages.tsx';
 import type { WalletAddressEntry, WalletBase } from '../../core/wallet.ts';
 import { cardStyleKey, designFromStyle, MiniCard, storedCardStyle } from './dashboard/cards.tsx';
 
@@ -198,12 +200,37 @@ function setAmountModal(w: WalletBase, initial: string, assetKey?: string): Prom
   return showSheet<{ amount: string; asset?: string }>((close) => <AmountModal w={w} initial={initial} assetKey={assetKey} close={close} />);
 }
 
+/** WalletAddressListViewModel.selectedCurrency: the coin, or a fiat currency the amount is typed in (kept while the app runs) */
+const receiveAmountCurrency = signal<string>('crypto');
+
+/** _convertAmountToCrypto: the fiat amount at the price (of that fiat), to min(decimals, 8) digits; none without a price */
+async function fiatToCrypto(w: WalletBase, amount: string, fiat: string, a: { api: string; decimals: number }): Promise<string> {
+  const rate = fiat === settings.peek().fiatCurrency ? prices.peek()[a.api] ?? 0 : await fetchPrice(apiString(w.currency), fiat);
+  const v = Number.parseFloat(amount.replace(',', '.'));
+  if (!(rate > 0) || !Number.isFinite(v)) return '';
+  return (v / rate).toFixed(Math.min(a.decimals, 8));
+}
+
 function AmountModal({ w, initial, assetKey, close }: { w: WalletBase; initial: string; assetKey?: string; close: (v?: { amount: string; asset?: string }) => void }) {
-  const [v, setV] = useState(initial);
   const [key, setKey] = useState(assetKey ?? w.currency.key);
   const assets = assetsOf(w);
   const sel = assets.find((a) => a.key === key) ?? assets[0];
-  const bad = v && tryParseFixed(v, sel.decimals) === null;
+  const cur = receiveAmountCurrency.value;
+  const fiat = cur !== 'crypto' ? cur : null;
+  // initState: a fiat choice shows the amount in that fiat
+  const [v, setV] = useState(() => {
+    if (!fiat || !initial) return initial;
+    const rate = fiat === settings.peek().fiatCurrency ? prices.peek()[sel.api] ?? 0 : 0;
+    return rate ? (Number(initial) * rate).toFixed(2) : '';
+  });
+  const bad = v && (fiat ? !/^\d*[.,]?\d{0,2}$/.test(v) : tryParseFixed(v, sel.decimals) === null);
+  /** _presentFiatCurrencyPicker: a fiat currency, or the coin */
+  const pickCurrency = async () => {
+    const r = await chooseFiat(fiat ?? settings.peek().fiatCurrency, { title: w.currency.title, name: w.currency.fullName ?? w.currency.title, icon: w.currency.iconPath ?? undefined, selected: !fiat });
+    if (!r) return;
+    receiveAmountCurrency.value = r;
+    setV('');
+  };
   return (
     <div style={{ padding: '0 0 24px' }}>
       <TopBar title={t('set_amount')} onClose={() => close()} />
@@ -219,8 +246,16 @@ function AmountModal({ w, initial, assetKey, close }: { w: WalletBase; initial: 
           </>
         )}
         <div>{t('amount')}</div>
-        <Field value={v} onInput={setV} placeholder="0.00000000" inputMode="decimal" error={bad ? t('error_text_amount') : null} suffix={<span class="suffix">{sel.symbol}</span>} id="receive_amount_input" autoFocus />
-        <Button disabled={!!bad} id="receive_amount_continue" onClick={() => close({ amount: v.replace(',', '.'), asset: sel.key === w.currency.key ? undefined : sel.key })}>{t('continue_text')}</Button>
+        <Field value={v} onInput={setV} placeholder={fiat ? '0.00' : '0.00000000'} inputMode="decimal" error={bad ? t('error_text_amount') : null} suffix={
+          <button type="button" class="rowx" id="receive_amount_currency" aria-label={t('select_fiat_currency_title')} onClick={() => void pickCurrency()} style={{ gap: '4px', height: '44px', padding: '0 12px', borderRadius: '14px', border: 0, background: 'var(--surface-container-highest)', color: 'var(--on-surface)', cursor: 'pointer' }}>
+            <span>{fiat ?? sel.symbol}</span>
+            <MIcon name="chevronDown" size={20} color="var(--primary)" />
+          </button>
+        } id="receive_amount_input" autoFocus />
+        <Button disabled={!!bad} id="receive_amount_continue" onClick={async () => {
+          const amount = fiat && v ? await fiatToCrypto(w, v, fiat, sel) : v.replace(',', '.');
+          close({ amount, asset: sel.key === w.currency.key ? undefined : sel.key });
+        }}>{t('continue_text')}</Button>
       </div>
     </div>
   );

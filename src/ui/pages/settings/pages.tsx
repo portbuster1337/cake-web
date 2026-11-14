@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import { t, SUPPORTED_LOCALES, LOCALE_COUNTRY, setLanguage, language } from '../../../core/i18n.ts';
-import { Button, Img, MIcon, Page, Row, Section, Sections, Segmented, ToggleRow, TopBar, copyText } from '../../components/core.tsx';
+import { Button, Img, MIcon, Page, Row, Section, Sections, Segmented, ToggleRow, TopBar, asset, copyText } from '../../components/core.tsx';
 import { confirmAlert, showAlert, showSheet, toast } from '../../components/overlays.tsx';
 import { requireAuth } from '../../components/auth.tsx';
 import { QrCode } from '../../components/qr.tsx';
@@ -182,9 +182,18 @@ export const FIAT_NAMES: Record<string, string> = {
   VND: 'Vietnamese Dong đồng', ZAR: 'South African Rand', TRY: 'Turkish Lira', KES: 'Kenyan Shillings',
 };
 
-/** FiatCurrencyPickerSheet: a fiat currency (the selected one marked) */
-export function chooseFiat(selected: string): Promise<string | undefined> {
-  return showSheet<string>((close) => <FiatPicker close={close} selected={selected} />, { full: true });
+/** the coin offered beside the fiat currencies (FiatCurrencyPickerSheet.cryptoOption); picked as "crypto" */
+export interface CryptoOption {
+  title: string;
+  name: string;
+  icon?: string;
+  /** it is the current choice */
+  selected?: boolean;
+}
+
+/** FiatCurrencyPickerSheet: a fiat currency (the selected one marked), or the coin when offered ("crypto") */
+export function chooseFiat(selected: string, crypto?: CryptoOption): Promise<string | undefined> {
+  return showSheet<string>((close) => <FiatPicker close={close} selected={selected} crypto={crypto} />, { full: true });
 }
 
 export function pickFiat() {
@@ -196,12 +205,19 @@ export function pickFiat() {
   });
 }
 
-function FiatPicker({ close, selected }: { close: (v?: string) => void; selected: string }) {
+function FiatPicker({ close, selected, crypto }: { close: (v?: string) => void; selected: string; crypto?: CryptoOption }) {
   const [q, setQ] = useState('');
-  const sel = selected;
+  const sel = crypto?.selected ? '' : selected;
   const ql = q.toLowerCase();
   const match = (c: string) => !ql || c.toLowerCase().includes(ql) || FIAT_NAMES[c].toLowerCase().includes(ql);
   const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CNY'].filter((c) => c !== sel);
+  const CryptoRow = ({ on }: { on: boolean }) => (
+    <button type="button" class="row tap" onClick={() => close('crypto')} id="fiat_crypto_option">
+      <img src={crypto!.icon ? asset(crypto!.icon) : ''} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%' }} />
+      <span class="lbl"><span style={{ fontWeight: 500 }}>{crypto!.name}</span><span class="sub">{crypto!.title}</span></span>
+      {on && <MIcon name="check" size={20} color="var(--primary)" />}
+    </button>
+  );
   // _allSorted: by the lower-cased full name (code units)
   const lower = (c: string) => FIAT_NAMES[c].toLowerCase();
   const all = [...FIAT_CURRENCIES].sort((a, b) => (lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : 0)).filter(match);
@@ -222,7 +238,8 @@ function FiatPicker({ close, selected }: { close: (v?: string) => void; selected
         ) : (
           <>
             <div class="muted" style={{ padding: '8px 4px', fontWeight: 500 }}>{t('picker_section_selected')}</div>
-            <div class="list"><RowF c={sel} /></div>
+            <div class="list">{crypto?.selected ? <CryptoRow on /> : <RowF c={sel} />}</div>
+            {crypto && !crypto.selected && <><div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_crypto')}</div><div class="list"><CryptoRow on={false} /></div></>}
             {popular.length > 0 && <><div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_popular')}</div><div class="list">{popular.map((c) => <RowF c={c} />)}</div></>}
             <div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_all_currencies')}</div>
             <div class="list">{all.map((c) => <RowF c={c} />)}</div>
