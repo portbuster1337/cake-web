@@ -40,6 +40,8 @@ exist.
 | Biometrics, screenshot blocking | — | Not available to a web page. |
 | Dashboard: balance cards, card customizer, assets, history, charts, contacts, apps | ✅ | |
 | History filters, CSV export | ✅ | Transactions, swaps and Cake Pay orders; Cake's 17-column CSV. |
+| AnyPay (send page) | ✅ | Cake's handling of pasted, scanned and home-scanned payment requests: the network from the URI or the address, EIP-681 chains and tokens (Cake's token lists; a chainless contract found on its own chain), "switch to a wallet of that network" or "swap from this one" (the swap page in Cake's from-send mode, fixed rate), the network of a bare EVM address, the recipient-network picker, Cake's errors for unsupported chains and tokens. |
+| Restore from a QR code | ✅ | Cake's parser (types, seeds, keys, Monero's view-only JSON) and its "pick the type" page. |
 | Address book, domain lookups | ✅ | OpenAlias, ENS, Unstoppable, Yat, BIP-353, FIO, Nostr, Mastodon, ThorChain, .well-known (all over Tor). |
 | Backups | ✅ | Cake's v3 backup files, both ways (with trades and orders). Version 1 backups are not read. |
 | Settings: display, privacy, security, connection and sync (nodes, Tor), other | ✅ | Node lists are Cake's; "Tor only" nodes as in Cake. |

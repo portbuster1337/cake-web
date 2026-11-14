@@ -17,6 +17,9 @@ import { parsePaymentRequest } from '../../core/paymentUri.ts';
 import { isEvm, WALLET_TYPE_NAME } from '../../coins/types.ts';
 import { resolveAddress, type ResolvedAddress } from '../../app/resolver.ts';
 import { openTxDetails } from './dashboard/history.tsx';
+import { RecipientNetworkSelector, runAnyPay, type AnyPayFill } from './anypay.tsx';
+import { boundToChain, requestFromPaymentRequest, requestFromRaw, type AnyPayRequest } from '../../app/anypay.ts';
+import { chainById } from '../../coins/evm/chains.ts';
 
 interface Recipient {
   address: string;
@@ -57,13 +60,15 @@ export function sendNeedsTotp(addresses: string[]): boolean {
   );
 }
 
-function SendPage({ args }: { args?: { address?: string; amount?: string; asset?: string; note?: string } }) {
+type SendArgs = { address?: string; amount?: string; asset?: string; note?: string; rawInput?: string };
+
+function SendPage({ args }: { args?: SendArgs }) {
   const w = currentWallet.value;
   if (!w) return null;
   return <SendForm w={w} args={args} />;
 }
 
-function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amount?: string; asset?: string; note?: string } }) {
+function SendForm({ w, args }: { w: WalletBase; args?: SendArgs }) {
   const [recipients, setRecipients] = useState<Recipient[]>([{ ...emptyRecipient(args?.asset), address: args?.address ?? '', amount: args?.amount ?? '', note: args?.note ?? '' }]);
   const [idx, setIdx] = useState(0);
   const [priority, setPriority] = useState(() => settings.value.priority[w.type] ?? w.defaultPriority());
@@ -84,7 +89,30 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
   // Nano: the next block's proof of work starts while the form is filled in
   useEffect(() => (w as { prepareSend?: () => void }).prepareSend?.(), [w.id]);
 
-  const update = (p: Partial<Recipient>) => setRecipients(recipients.map((x, i) => (i === idx ? { ...x, ...p } : x)));
+  const update = (p: Partial<Recipient>) => setRecipients((prev) => prev.map((x, i) => (i === idx ? { ...x, ...p } : x)));
+
+  /** AnyPay's fields for the form (the asset only when the wallet has it) */
+  const applyFill = (f: AnyPayFill) => {
+    const p: Partial<Recipient> = { address: f.address, resolved: undefined };
+    if (f.asset && assetsOf(w).some((a) => a.key === f.asset)) p.asset = f.asset;
+    if (f.amount !== undefined) Object.assign(p, { amount: f.amount, sendAll: false, fiatMode: false });
+    if (f.note !== undefined) p.note = f.note;
+    update(p);
+  };
+  const anyPay = async (req: AnyPayRequest, fallback?: string) => {
+    const f = await runAnyPay(w, req, fallback);
+    if (f) applyFill(f);
+  };
+  /** _runAnyPayPaste: the pasted request, with the form's amount and note when it has none */
+  const anyPayPaste = (text: string) => {
+    const pr = parsePaymentRequest(text);
+    const amount = pr.amount === '0' ? '' : pr.amount;
+    return anyPay(requestFromPaymentRequest({ ...pr, amount: amount || r.amount, note: pr.note || r.note }));
+  };
+  // a scanned or linked request (the home screen's Scan)
+  useEffect(() => {
+    if (args?.rawInput) void anyPay(requestFromRaw(args.rawInput));
+  }, []);
 
   const cryptoAmount = (rr: Recipient): string => {
     if (!rr.fiatMode) return rr.amount;
@@ -201,12 +229,35 @@ function SendForm({ w, args }: { w: WalletBase; args?: { address?: string; amoun
                 style={{ flex: 1, minWidth: 0, background: 'none', border: 0, outline: 0, color: 'var(--on-surface)', fontSize: '16px', padding: '16px 12px', resize: 'none', fontFamily: 'inherit' }}
               />
               <div class="rowx" style={{ gap: '12px', paddingRight: '12px' }}>
-                <button type="button" class="ficon" aria-label={t('paste')} id="send_paste" onClick={async () => { try { await onAddressInput((await navigator.clipboard.readText()).trim()); } catch { toast(t('paste')); } }}><Icon src="paste.svg" size={22} /></button>
-                <button type="button" class="ficon" aria-label={t('scan')} onClick={async () => { const v = await nav.pushForResult<string>('/scan', { mode: 'address' }); if (v) await onAddressInput(v); }}><Icon src="scan.svg" size={22} /></button>
+                <button type="button" class="ficon" aria-label={t('paste')} id="send_paste" onClick={async () => {
+                  let text: string;
+                  try {
+                    text = (await navigator.clipboard.readText()).trim();
+                  } catch {
+                    toast(t('paste'));
+                    return;
+                  }
+                  await onAddressInput(text);
+                  if (text) await anyPayPaste(text);
+                }}><Icon src="paste.svg" size={22} /></button>
+                <button type="button" class="ficon" aria-label={t('scan')} id="send_scan" onClick={async () => {
+                  const v = await nav.pushForResult<string>('/scan', { mode: 'address' });
+                  if (!v) return;
+                  await onAddressInput(v);
+                  await anyPay(requestFromRaw(v));
+                }}><Icon src="scan.svg" size={22} /></button>
                 <button type="button" class="ficon" aria-label={t('address_book')} onClick={async () => { const c = await nav.pushForResult<{ address: string; name: string }>(Routes.pickerAddressBook, { currency: asset.key }); if (c) update({ address: c.address, resolved: undefined }); }}><Icon src="contacts_outlined.svg" size={22} /></button>
               </div>
             </div>
             {r.resolved && <div class="muted" style={{ fontSize: '12px', padding: '0 8px' }}>{r.resolved.name} → <span class="mono">{r.resolved.address}</span></div>}
+            {/* RecipientNetworkSelector: an EVM recipient's network, another one through AnyPay */}
+            {isEvm(w.type) && /^0x[a-fA-F0-9]{40}$/.test((r.resolved?.address ?? r.address).trim()) && (
+              <RecipientNetworkSelector w={w} onPick={(chainId) => {
+                const address = (r.resolved?.address ?? r.address).trim();
+                const token = asset.key !== w.currency.key;
+                void anyPay(boundToChain(requestFromPaymentRequest({ address, amount: token ? '' : r.amount, note: r.note, scheme: '' }), chainId), chainById(chainId)?.currency);
+              }} />
+            )}
             {errors.address && <div class="field-error">{errors.address}</div>}
           </div>
           <div class="col" style={{ gap: '12px' }}>

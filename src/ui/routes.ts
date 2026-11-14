@@ -115,6 +115,8 @@ export const Routes = {
   nftDetailsPage: '/nft_details_page',
   importNFTPage: '/import_nft_page',
   nftSendPage: '/nft_send_page',
+  anyPayDecision: '/anypay_network_decision',
+  anyPaySwitchWallet: '/anypay_switch_network_wallet',
   bridgeAmountPage: '/bridge_amount_page',
   bridgeHistoryPage: '/bridge_history_page',
   bridgeDestinationNetworkPage: '/bridge_destination_network_page',

@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { t } from '../../../core/i18n.ts';
-import { Button, Icon, Img, ModernButton, Spinner, TopBar } from '../../components/core.tsx';
+import { Button, Icon, Img, MIcon, ModernButton, Spinner, TopBar } from '../../components/core.tsx';
 import { showAlert, showSheet, toast } from '../../components/overlays.tsx';
 import { requireAuth } from '../../components/auth.tsx';
 import { registerKeepAlive, registerRoute, Routes } from '../../routes.ts';
@@ -16,7 +16,9 @@ import { resolveAddress } from '../../../app/resolver.ts';
 import { parsePaymentRequest } from '../../../core/paymentUri.ts';
 import { formatFixed } from '../../../core/amount.ts';
 import { isSynced, type WalletBase } from '../../../core/wallet.ts';
-import { ALL_CURRENCIES, currencyFromString, isEvm, type WalletType } from '../../../coins/types.ts';
+import { ALL_CURRENCIES, currencyFromString, isEvm, WALLET_TYPE_NAME, type WalletType } from '../../../coins/types.ts';
+import { NetworkIcon, symbolIcon } from '../anypay.tsx';
+import type { SwapIntent } from '../../../app/anypay.ts';
 import { iconFor } from '../dashboard/wallets.tsx';
 import { EVM_DEFAULT_TOKENS, EVM_TOKEN_TAGS } from '../../../coins/tokens.gen.ts';
 import { ExchangeVM } from '../../../exchange/exchange.ts';
@@ -221,7 +223,7 @@ function FiatBar({ fiatMode, onSwitch, converted, max, maxActive, onMax }: { fia
   );
 }
 
-function AmountBox({ vm, receiver, error, onEdited }: { vm: ExchangeVM; receiver: boolean; error: string | null; onEdited: () => void }) {
+function AmountBox({ vm, receiver, error, onEdited, hideTitle }: { vm: ExchangeVM; receiver: boolean; error: string | null; onEdited: () => void; hideTitle?: boolean }) {
   const cur = receiver ? vm.receiveCurrency.value : vm.depositCurrency.value;
   const vmAmount = receiver ? vm.receiveAmount : vm.depositAmount;
   const sendAll = !receiver && vm.isSendAllEnabled.value;
@@ -372,7 +374,7 @@ function AmountBox({ vm, receiver, error, onEdited }: { vm: ExchangeVM; receiver
 
   return (
     <div class="col" style={{ gap: '12px' }} id={receiver ? 'swap_receive_box' : 'swap_deposit_box'}>
-      <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--on-surface-variant)' }}>{receiver ? t('receive') : t('send')}</div>
+      {!hideTitle && <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--on-surface-variant)' }}>{receiver ? t('receive') : t('send')}</div>}
       <div class="col" style={{ gap: '12px', padding: '16px', borderRadius: '24px', background: 'var(--surface-container)' }}>
         <div>
           <div class="rowx" style={{ gap: '4px', justifyContent: 'space-between' }}>
@@ -509,8 +511,10 @@ function ProviderPreview({ vm }: { vm: ExchangeVM }) {
 
 // -------------------------------------------------------------- the page --
 
-/** args: from / to (a currency key, or a token address of the wallet), PaymentRequest fields */
-function SwapPage({ args }: { args?: { from?: string; to?: string; address?: string; amount?: string } }) {
+type SwapArgs = { from?: string; to?: string; address?: string; amount?: string; fromSend?: SwapIntent };
+
+/** args: from / to (a currency key, or a token address of the wallet), PaymentRequest fields; fromSend: AnyPay's swap */
+function SwapPage({ args }: { args?: SwapArgs }) {
   const w = currentWallet.value;
   if (!w) return null;
   return <SwapForm key={w.id} w={w} args={args} />;
@@ -527,7 +531,32 @@ function currencyFromArg(vm: ExchangeVM, key: string | undefined): SwapCurrency 
   return ALL_CURRENCIES.some((c) => c.key === key) ? builtin(key) : null;
 }
 
-function SwapForm({ w, args }: { w: WalletBase; args?: { from?: string; to?: string; address?: string; amount?: string } }) {
+/** SwapFromSendArgs' currency: the token (as the swap lists it), else the network's coin */
+function intentCurrency(vm: ExchangeVM, i: SwapIntent): SwapCurrency | null {
+  if (i.token) {
+    const type = i.token.walletType;
+    const tag = isEvm(type) ? EVM_TOKEN_TAGS[type] : type === 'solana' ? 'SOL' : type === 'tron' ? 'TRX' : null;
+    if (!tag) return null;
+    const a = i.token.address.toLowerCase();
+    return vm.currencies.value.find((c) => c.address?.toLowerCase() === a && c.tag === tag) ?? vm.currencies.value.find((c) => !c.address && c.title === i.token!.symbol.toUpperCase() && c.tag === tag) ?? fromToken({ symbol: i.token.symbol, name: i.token.name, address: i.token.address, decimals: i.token.decimals, icon: i.token.icon }, tag);
+  }
+  return ALL_CURRENCIES.some((c) => c.key === i.receiveCurrency) ? builtin(i.receiveCurrency) : null;
+}
+
+/** SwapSectionHeader: "From / To" and the network */
+function SectionHeader({ label, type }: { label: string; type: WalletType }) {
+  return (
+    <div class="rowx" style={{ padding: '0 16px 12px', gap: '0', fontWeight: 500, letterSpacing: '-0.07px' }}>
+      <span>{label}</span>
+      <span style={{ width: '8px' }} />
+      <NetworkIcon src={symbolIcon(type)} size={16} />
+      <span style={{ width: '4px' }} />
+      <span style={{ color: 'var(--primary)' }}>{WALLET_TYPE_NAME[type]}</span>
+    </div>
+  );
+}
+
+function SwapForm({ w, args }: { w: WalletBase; args?: SwapArgs }) {
   const vm = useMemo(() => new ExchangeVM(w), []);
   // for the end-to-end tests (window.__cw.swap)
   useEffect(() => {
@@ -550,6 +579,16 @@ function SwapForm({ w, args }: { w: WalletBase; args?: { from?: string; to?: str
     if (to && !eqCurrency(to, vm.receiveCurrency.peek())) vm.changeReceiveCurrency(to);
     if (args?.address) vm.receiveAddress.value = args.address;
     if (args?.amount) vm.receiveMoney.value = args.amount;
+    // fromSend: what the request asks for, to its address, at a fixed rate
+    const fs = args?.fromSend;
+    if (fs) {
+      const rc = intentCurrency(vm, fs);
+      if (rc && !eqCurrency(rc, vm.receiveCurrency.peek())) vm.changeReceiveCurrency(rc);
+      vm.receiveAddress.value = fs.recipientAddress;
+      vm.enableFixedRateMode();
+      if (fs.receiveAmount) void vm.changeReceiveAmount(fs.receiveAmount);
+      else void vm.calculateBestRate();
+    }
     // FeesViewModel.isLowFee: after 1 s, Ignore / Use Suggested
     const lowFee = setTimeout(async () => {
       if (!isLowFee(vm.wallet)) return;
@@ -622,20 +661,33 @@ function SwapForm({ w, args }: { w: WalletBase; args?: { from?: string; to?: str
     await vm.createTrade();
   };
   const creating = vm.tradeState.value.kind === 'creating';
+  const fromSend = args?.fromSend;
   return (
     <div class="page solid" id="swap_page">
-      <TopBar title={t('swap')} onClose={() => nav.pop()} trailing={<ModernButton svg="options.svg" size={36} iconSize={20} label={t('configure')} id="swap_configure" onClick={() => nav.push(Routes.swapOptions, { vm })} />} />
+      {fromSend ? (
+        <TopBar title={t('swap_from_network', { network: WALLET_TYPE_NAME[w.type] })} onBack={() => nav.pop()} />
+      ) : (
+        <TopBar title={t('swap')} onClose={() => nav.pop()} trailing={<ModernButton svg="options.svg" size={36} iconSize={20} label={t('configure')} id="swap_configure" onClick={() => nav.push(Routes.swapOptions, { vm })} />} />
+      )}
       <div style={{ height: '24px', flex: 'none' }} />
       <div class="page-body" style={{ padding: '0 18px' }}>
-        <AmountBox vm={vm} receiver={false} error={validated ? errors.deposit : null} onEdited={() => setValidated(false)} />
+        {fromSend && <SectionHeader label={t('from')} type={w.type} />}
+        <AmountBox vm={vm} receiver={false} error={validated ? errors.deposit : null} onEdited={() => setValidated(false)} hideTitle={!!fromSend} />
         <LimitPopup vm={vm} />
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 0' }}>
-          <div style={{ position: 'absolute', left: 0, right: 0, height: '1px', background: 'var(--surface-container-high)' }} />
-          <span style={{ position: 'relative', background: 'var(--surface)', borderRadius: '50%' }}>
-            <ModernButton svg="swap_amounts.svg" size={36} iconSize={24} bg="var(--surface-container)" label={t('swap_reverse_direction')} id="swap_reverse" onClick={() => vm.reverseSwapDirection()} />
-          </span>
-        </div>
-        <AmountBox vm={vm} receiver={true} error={validated ? errors.receive : null} onEdited={() => setValidated(false)} />
+        {fromSend ? (
+          <div class="center" style={{ padding: '24px 0', display: 'flex', justifyContent: 'center' }} id="swap_from_send_arrow">
+            <MIcon name="arrow_downward" size={24} color="var(--on-surface-variant)" />
+          </div>
+        ) : (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 0' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, height: '1px', background: 'var(--surface-container-high)' }} />
+            <span style={{ position: 'relative', background: 'var(--surface)', borderRadius: '50%' }}>
+              <ModernButton svg="swap_amounts.svg" size={36} iconSize={24} bg="var(--surface-container)" label={t('swap_reverse_direction')} id="swap_reverse" onClick={() => vm.reverseSwapDirection()} />
+            </span>
+          </div>
+        )}
+        {fromSend && <SectionHeader label={t('to')} type={fromSend.targetWalletType} />}
+        <AmountBox vm={vm} receiver={true} error={validated ? errors.receive : null} onEdited={() => setValidated(false)} hideTitle={!!fromSend} />
       </div>
       <div class="col" style={{ gap: '12px', padding: '12px 18px 24px', flex: 'none' }}>
         {!synced && (

@@ -20,6 +20,7 @@ import './buy/buy.tsx';
 import './cakepay/cakepay.tsx';
 import './deuro/savings.tsx';
 import './bridge/bridge.tsx';
+import './anypay.tsx';
 import './settings/silent.tsx';
 import './unavailable.tsx';
 import './settings/main.tsx';

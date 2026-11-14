@@ -13,7 +13,6 @@ import { apiString, fiatValue, formatFiatAmount } from '../../app/prices.ts';
 import { settings } from '../../app/settings.ts';
 import { ModalHeader } from './settings/main.tsx';
 import { openExternal } from './dashboard/history.tsx';
-import { parsePaymentRequest } from '../../core/paymentUri.ts';
 
 function short(a: string) {
   return a.length > 14 ? `${a.slice(0, 5)}...${a.slice(-5)}` : a;
@@ -193,8 +192,8 @@ function handleScanned(v: string) {
   const s = v.trim();
   if (/^wc:/i.test(s)) return nav.push(Routes.walletConnectConnectionsListing, { uri: s });
   if (/^(https?|tcp):\/\//i.test(s) && !/lnurl/i.test(s)) return nav.push(Routes.newNode, { type: currentWallet.value?.type, prefill: s });
-  const pr = parsePaymentRequest(s);
-  nav.push(Routes.send, { address: pr.address, amount: pr.amount, note: pr.note });
+  // CoinActionRow._onPressedScan: the send page takes the scanned request through AnyPay
+  nav.push(Routes.send, { rawInput: s });
 }
 
 registerRoute(Routes.unspentCoinsList, CoinControlPage);
