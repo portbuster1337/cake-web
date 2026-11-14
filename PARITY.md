@@ -41,6 +41,7 @@ exist.
 | Dashboard: balance cards, card customizer, assets, history, charts, contacts, apps | ✅ | |
 | History filters, CSV export | ✅ | Transactions, swaps and Cake Pay orders; Cake's 17-column CSV. |
 | AnyPay (send page) | ✅ | Cake's handling of pasted, scanned and home-scanned payment requests: the network from the URI or the address, EIP-681 chains and tokens (Cake's token lists; a chainless contract found on its own chain), "switch to a wallet of that network" or "swap from this one" (the swap page in Cake's from-send mode, fixed rate), the network of a bare EVM address, the recipient-network picker, Cake's errors for unsupported chains and tokens. |
+| Open CryptoPay | ✅ | Cake's handling of merchants' Open CryptoPay QRs (DFX): the invoice and this coin's address and amount from the merchant over Tor, the signed transaction handed to the merchant (broadcast by the wallet first for Monero and Solana), the invoice cancelled when the confirmation is dismissed. |
 | Restore from a QR code | ✅ | Cake's parser (types, seeds, keys, Monero's view-only JSON) and its "pick the type" page. |
 | Address book, domain lookups | ✅ | OpenAlias, ENS, Unstoppable, Yat, BIP-353, FIO, Nostr, Mastodon, ThorChain, .well-known (all over Tor). |
 | Backups | ✅ | Cake's v3 backup files, both ways (with trades and orders). Version 1 backups are not read. |

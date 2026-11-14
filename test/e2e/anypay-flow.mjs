@@ -5,6 +5,7 @@
 // chain; then in an Ethereum wallet a USDT transfer request (the token and its amount selected) and
 // the recipient-network selector.
 //   node test/e2e/anypay-flow.mjs [--url http://127.0.0.1:8787/]
+import { bech32 } from '@scure/base';
 import { launch } from './launch.mjs';
 
 const URL_ = process.argv.includes('--url') ? process.argv[process.argv.indexOf('--url') + 1] : 'http://127.0.0.1:8787/';
@@ -20,7 +21,8 @@ const shot = (n) => page.screenshot({ path: `/tmp/opencode/anypayshot-${n}.png` 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const text = (sel) => page.$eval(sel, (e) => e.innerText.replace(/\s+/g, ' ').trim()).catch(() => null);
 const top = () => page.evaluate(() => window.__cw.nav.top?.name);
-const LTC = 'ltc1qg82tdxa6x7rp7mmvlw0ajkd3ffkvjwyrkx8x6s';
+// a valid Litecoin address nobody holds
+const LTC = bech32.encode('ltc', [0, ...bech32.toWords(crypto.getRandomValues(new Uint8Array(20)))]);
 const ETH = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 

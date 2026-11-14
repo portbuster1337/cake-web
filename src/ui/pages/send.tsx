@@ -18,6 +18,8 @@ import { isEvm, WALLET_TYPE_NAME } from '../../coins/types.ts';
 import { resolveAddress, type ResolvedAddress } from '../../app/resolver.ts';
 import { openTxDetails } from './dashboard/history.tsx';
 import { RecipientNetworkSelector, runAnyPay, type AnyPayFill } from './anypay.tsx';
+import { cancelOcp, commitOcp, getOcpAddress, getOcpInvoice, isOpenCryptoPayQR, OpenCryptoPayNotSupported, requiresClientCommit, type OcpAsset, type OcpRequest } from '../../integrations/openCryptoPay.ts';
+import { EVM_TOKEN_TAGS } from '../../coins/tokens.gen.ts';
 import { boundToChain, requestFromPaymentRequest, requestFromRaw, type AnyPayRequest } from '../../app/anypay.ts';
 import { chainById } from '../../coins/evm/chains.ts';
 
@@ -109,9 +111,34 @@ function SendForm({ w, args }: { w: WalletBase; args?: SendArgs }) {
     const amount = pr.amount === '0' ? '' : pr.amount;
     return anyPay(requestFromPaymentRequest({ ...pr, amount: amount || r.amount, note: pr.note || r.note }));
   };
+  // Open CryptoPay: the merchant's invoice for this coin (cancelled when the confirmation is dismissed)
+  const [ocp, setOcp] = useState<OcpRequest | null>(null);
+  const scope = `wallet:${w.id}`;
+  const ocpAsset = (): OcpAsset => {
+    if (asset.key === w.currency.key) return { title: w.currency.title, tag: w.currency.tag, fullName: w.currency.fullName ?? null, key: w.currency.key };
+    const tag = isEvm(w.type) ? EVM_TOKEN_TAGS[w.type] ?? null : w.type === 'solana' ? 'SOL' : w.type === 'tron' ? 'TRX' : null;
+    return { title: asset.symbol.toUpperCase(), tag, fullName: asset.symbol };
+  };
+  /** _handleIfOpenCryptoPay: true when the input was an Open CryptoPay QR (handled, or its error shown) */
+  const handleOcp = async (input: string): Promise<boolean> => {
+    if (!isOpenCryptoPayQR(input)) return false;
+    if (idx !== 0) setIdx(0);
+    try {
+      const req = await getOcpInvoice(input, scope);
+      const pr = parsePaymentRequest(await getOcpAddress(req, ocpAsset(), scope));
+      setOcp(req);
+      // clearOutputs, then the request's fields
+      setRecipients([{ ...emptyRecipient(r.asset), address: pr.address, amount: pr.amount, note: pr.note }]);
+    } catch (e) {
+      // getOpenCryptoPayRequest: a plain LNURL in a Bitcoin wallet is left alone
+      if (!(e instanceof OpenCryptoPayNotSupported && w.type === 'bitcoin')) await showAlert({ title: t('error'), content: (e as Error).message, right: t('ok') });
+    }
+    return true;
+  };
   // a scanned or linked request (the home screen's Scan)
   useEffect(() => {
-    if (args?.rawInput) void anyPay(requestFromRaw(args.rawInput));
+    const raw = args?.rawInput;
+    if (raw) void handleOcp(raw).then((done) => (done ? undefined : anyPay(requestFromRaw(raw))));
   }, []);
 
   const cryptoAmount = (rr: Recipient): string => {
@@ -189,7 +216,25 @@ function SendForm({ w, args }: { w: WalletBase; args?: SendArgs }) {
       feeRate: priority === 'custom' ? customRate : undefined,
       selectedUtxos,
     };
-    await showSheet((close) => <ConfirmSheet w={w} credentials={credentials} assetSymbol={asset.symbol} decimals={asset.decimals} api={asset.api} close={close} />, { dismissible: false, full: true });
+    const pay = ocp;
+    // _handleOcpRequest: the signed transaction goes to the merchant (broadcast here first for Monero, Zano, Solana)
+    const commitWith = pay
+      ? async (p: PendingTransaction) => {
+          const a = ocpAsset();
+          if (requiresClientCommit(a)) await p.commit();
+          await commitOcp(pay, a, p.id, p.hex ?? '', scope);
+          setOcp(null);
+        }
+      : undefined;
+    // dismissTransaction: the invoice is cancelled and the form cleared
+    const onDismiss = pay
+      ? () => {
+          void cancelOcp(pay, scope);
+          setOcp(null);
+          setRecipients([emptyRecipient(r.asset)]);
+        }
+      : undefined;
+    await showSheet((close) => <ConfirmSheet w={w} credentials={credentials} assetSymbol={asset.symbol} decimals={asset.decimals} api={asset.api} close={close} commitWith={commitWith} onDismiss={onDismiss} />, { dismissible: false, full: true });
   };
 
   const balance = asset.balance;
@@ -238,13 +283,13 @@ function SendForm({ w, args }: { w: WalletBase; args?: SendArgs }) {
                     return;
                   }
                   await onAddressInput(text);
-                  if (text) await anyPayPaste(text);
+                  if (text && !(await handleOcp(text))) await anyPayPaste(text);
                 }}><Icon src="paste.svg" size={22} /></button>
                 <button type="button" class="ficon" aria-label={t('scan')} id="send_scan" onClick={async () => {
                   const v = await nav.pushForResult<string>('/scan', { mode: 'address' });
                   if (!v) return;
                   await onAddressInput(v);
-                  await anyPay(requestFromRaw(v));
+                  if (!(await handleOcp(v))) await anyPay(requestFromRaw(v));
                 }}><Icon src="scan.svg" size={22} /></button>
                 <button type="button" class="ficon" aria-label={t('address_book')} onClick={async () => { const c = await nav.pushForResult<{ address: string; name: string }>(Routes.pickerAddressBook, { currency: asset.key }); if (c) update({ address: c.address, resolved: undefined }); }}><Icon src="contacts_outlined.svg" size={22} /></button>
               </div>
@@ -469,8 +514,12 @@ export function ConfirmSwiper({ label, onConfirm }: { label: string; onConfirm: 
   );
 }
 
-function ConfirmSheet({ w, credentials, assetSymbol, decimals, api, close }: { w: WalletBase; credentials: any; assetSymbol: string; decimals: number; api: string; close: () => void }) {
+function ConfirmSheet({ w, credentials, assetSymbol, decimals, api, close: closeSheet, commitWith, onDismiss }: { w: WalletBase; credentials: any; assetSymbol: string; decimals: number; api: string; close: () => void; commitWith?: (p: PendingTransaction) => Promise<void>; onDismiss?: () => void }) {
   const [state, setState] = useState<'generating' | 'ready' | 'sending' | 'sent' | 'error'>('generating');
+  const close = () => {
+    if (state !== 'sent') onDismiss?.();
+    closeSheet();
+  };
   const [pending, setPending] = useState<PendingTransaction | null>(null);
   const [error, setError] = useState('');
   const fiatCode = settings.value.fiatCurrency;
@@ -566,7 +615,7 @@ function ConfirmSheet({ w, credentials, assetSymbol, decimals, api, close }: { w
                 onConfirm={async () => {
                   setState('sending');
                   try {
-                    await pending.commit();
+                    await (commitWith ? commitWith(pending) : pending.commit());
                     setState('sent');
                   } catch (e) {
                     setError((e as Error).message);
