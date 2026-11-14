@@ -9,10 +9,10 @@ import { useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { t } from '../../../core/i18n.ts';
 import { Icon, Img, MIcon, ModernButton, TopBar, Spinner } from '../../components/core.tsx';
-import { showAlert, showSheet, toast } from '../../components/overlays.tsx';
+import { showSheet, toast } from '../../components/overlays.tsx';
 import { currentWallet, walletLoading, walletError, torStatus } from '../../../app/app.ts';
 import { settings, updateSettings } from '../../../app/settings.ts';
-import { isSynced, syncProgress, syncStatusTitle, type WalletBase } from '../../../core/wallet.ts';
+import { isSynced, syncStatusTitle, type WalletBase } from '../../../core/wallet.ts';
 import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl, WALLET_TYPE_NAME } from '../../../coins/types.ts';
@@ -28,71 +28,163 @@ const SYNC_HEAVY = new Set(['monero', 'wownero', 'decred', 'zcash', 'zano']);
 /** BalanceViewModel._hasAdditionalBalanceForWalletType: wallets with the "confirming" balance row */
 const ADDITIONAL_BALANCE = new Set(['monero', 'wownero', 'zano', 'decred', 'zcash']);
 
-function ChainIcon({ w }: { w: WalletBase }) {
-  const s = w.syncStatus.value;
-  const syncing = s.kind === 'syncing' || s.kind === 'synchronizing' || s.kind === 'connecting' || s.kind === 'startingScan' || s.kind === 'attempting';
-  const p = syncProgress(s);
-  const r = 16;
+/** SyncBar.failStatuses / progressStatuses (by exact status) */
+const FAIL_STATUSES = new Set(['failed', 'lostConnection', 'timedOut', 'unsupported']);
+const PROGRESS_STATUSES = new Set(['syncing', 'notConnected', 'synchronizing', 'attempting', 'startingScan', 'syncedTip', 'processing', 'connecting', 'connected']);
+
+/** SyncStatus.progress() */
+function statusProgress(s: WalletBase['syncStatus']['value']): number {
+  if (s.kind === 'syncing') return s.progress;
+  if (s.kind === 'processing') return 0.99;
+  return s.kind === 'synced' || s.kind === 'syncedTip' ? 1 : 0;
+}
+
+/** ChainIcon: the coin's icon; for wallets that sync blocks, the progress ring around it (green while "Synced" shows) */
+function ChainIcon({ w, heavy, showSynced }: { w: WalletBase; heavy: boolean; showSynced: boolean }) {
+  const p = statusProgress(w.syncStatus.value);
+  const done = !showSynced && (!heavy || p >= 1);
+  const r = 17;
   const c = 2 * Math.PI * r;
   return (
     <div style={{ position: 'relative', width: '36px', height: '36px', flex: 'none' }} id="chain_icon">
-      {syncing && (
-        <svg width="36" height="36" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
-          <circle cx="18" cy="18" r={r} fill="none" stroke="#FFB84E" stroke-width="2" stroke-dasharray={`${Math.max(0.05, p) * c} ${c}`} />
-        </svg>
-      )}
-      <Icon src={(w.currency.flatIconPath ?? '').replace('assets/new-ui/', '') || 'balance_card_icons/bitcoin.svg'} size={36} color={syncing ? 'var(--primary)' : 'color-mix(in srgb, var(--primary) 20%, transparent)'} style={{ transform: syncing ? 'scale(0.8)' : undefined, transition: 'transform 150ms' }} />
+      <svg width="36" height="36" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)', opacity: done ? 0 : 1, transition: 'opacity 100ms' }} aria-hidden="true">
+        <circle cx="18" cy="18" r={r} fill="none" stroke={showSynced ? '#12A439' : '#FFB84E'} stroke-width="2" stroke-dasharray={`${p * c} ${c}`} />
+      </svg>
+      <Icon src={(w.currency.flatIconPath ?? '').replace('assets/new-ui/', '') || 'balance_card_icons/bitcoin.svg'} size={36} color={done ? 'color-mix(in srgb, var(--primary) 20%, transparent)' : 'var(--primary)'} style={{ transform: done ? undefined : 'scale(0.8)', transition: 'transform 150ms' }} />
     </div>
   );
 }
 
-function SyncBar({ w }: { w: WalletBase }) {
+/** SyncBar: the full bar (wallets that sync blocks, failures, "Synced") or the compact one (Tor, a spinner, a check) */
+function SyncBar({ w, heavy, showSynced }: { w: WalletBase; heavy: boolean; showSynced: boolean }) {
   const s = w.syncStatus.value;
-  const failed = s.kind === 'failed' || s.kind === 'lostConnection' || s.kind === 'notConnected' || s.kind === 'timedOut' || s.kind === 'unsupported';
-  const synced = isSynced(s);
   const tor = torStatus.value.state === 'ready';
+  const fail = FAIL_STATUSES.has(s.kind);
+  const progress = PROGRESS_STATUSES.has(s.kind);
+  const showingSynced = showSynced && s.kind === 'synced';
+  const full = s.kind === 'synced' ? heavy && showingSynced : heavy || fail;
+  if (!full) {
+    return (
+      <span class="rowx" style={{ gap: '6px', flex: 'none' }} id="sync_bar_compact" role="status" aria-label={[tor ? t('tor_connection') : '', !heavy && progress ? t('synchronizing') : '', !heavy && showingSynced ? t('sync_synced') : ''].filter(Boolean).join(', ') || undefined}>
+        {tor && <Img src="tor.svg" size={20} />}
+        {!heavy && progress && <span class="spinner" style={{ width: '16px', height: '16px', color: 'var(--on-surface-variant)' }} />}
+        {!heavy && showingSynced && <MIcon name="check" size={18} color="var(--sync-green)" />}
+      </span>
+    );
+  }
+  const icon = s.kind === 'synced' ? <MIcon name="check" size={12} color="var(--sync-green)" /> : s.kind === 'lostConnection' ? <Icon src="offline.svg" size={16} color="var(--error)" /> : fail ? <Icon src="warning.svg" size={16} color="var(--error)" /> : tor ? <Icon src="tor_sync.svg" size={16} color="var(--tor-purple)" /> : null;
   return (
     <button
       type="button"
       id="sync_bar"
       onClick={() => nav.push(Routes.manageNodes)}
-      style={{ height: '36px', borderRadius: '9999px', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer', border: failed ? 0 : '1px solid var(--surface-container-high)', background: failed ? 'color-mix(in srgb, var(--error-container) 25%, transparent)' : 'none', color: failed ? 'var(--error)' : synced ? 'var(--sync-green)' : 'var(--on-surface-variant)', maxWidth: '100%' }}
+      style={{ width: '100%', height: '36px', borderRadius: '9999px', padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '12px', fontWeight: 400, cursor: 'pointer', border: progress || showingSynced ? '1px solid var(--surface-container-high)' : 0, background: fail ? 'color-mix(in srgb, var(--error-container) 25%, transparent)' : 'none', color: fail ? 'var(--error)' : s.kind === 'synced' ? 'var(--sync-green)' : 'var(--on-surface-variant)', minWidth: 0 }}
     >
-      {synced ? <MIcon name="check" size={12} color="var(--sync-green)" /> : failed ? <Icon src="warning.svg" size={14} color="var(--error)" /> : tor ? <Icon src="tor_sync.svg" size={14} color="var(--tor-purple)" /> : <Spinner />}
-      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{syncStatusTitle(s) || t('synchronizing')}</span>
+      {icon}
+      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{syncStatusTitle(s, settings.value.syncStatusDisplayMode) || t('synchronizing')}</span>
     </button>
   );
 }
 
+/** TopBar (lib/new-ui/widgets/coins_page/top_bar_widget/top_bar.dart): "Synced" for 3 seconds; the bar takes the name's place while syncing */
 function HomeTopBar({ w }: { w: WalletBase }) {
   const s = w.syncStatus.value;
+  const heavy = SYNC_HEAVY.has(w.type);
   const [showSynced, setShowSynced] = useState(false);
   useEffect(() => {
-    if (isSynced(s)) {
-      setShowSynced(true);
-      const id = setTimeout(() => setShowSynced(false), 3000);
-      return () => clearTimeout(id);
+    if (s.kind !== 'synced') {
+      setShowSynced(false);
+      return;
     }
-  }, [s.kind]);
-  const progressStatus = s.kind === 'syncing' || s.kind === 'startingScan' || s.kind === 'failed' || s.kind === 'lostConnection' || s.kind === 'notConnected' || s.kind === 'timedOut';
-  const showBar = showSynced || progressStatus || (SYNC_HEAVY.has(w.type) && !isSynced(s));
+    setShowSynced(true);
+    const id = setTimeout(() => setShowSynced(false), 3000);
+    return () => clearTimeout(id);
+  }, [s.kind, w.id]);
+  const replacesName = s.kind === 'synced' ? showSynced : heavy || PROGRESS_STATUSES.has(s.kind) || FAIL_STATUSES.has(s.kind);
   const tor = torStatus.value.state === 'ready';
   return (
     <div class="rowx gap12" style={{ padding: '10px 18px' }}>
-      <ChainIcon w={w} />
-      <div class="grow rowx gap8" style={{ height: '36px', minWidth: 0 }}>
-        {showBar ? (
-          <SyncBar w={w} />
+      <ChainIcon w={w} heavy={heavy} showSynced={showSynced} />
+      <div class="grow rowx" style={{ height: '36px', minWidth: 0 }}>
+        {replacesName ? (
+          <SyncBar w={w} heavy={heavy} showSynced={showSynced} />
         ) : (
           <>
-            <span style={{ fontSize: '16px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} id="home_wallet_name">{w.name}</span>
-            {tor && <img src="./cake/new-ui/tor.svg" alt="Tor" title={torStatus.value.message} style={{ width: '20px', height: '20px' }} />}
-            {(s.kind === 'synchronizing' || s.kind === 'connecting') && <Spinner />}
+            <span class="grow" style={{ fontSize: '16px', fontWeight: 500, color: 'var(--on-surface)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }} id="home_wallet_name">{w.name}</span>
+            {tor && (
+              <>
+                <span style={{ width: '6px', flex: 'none' }} />
+                <SyncBar w={w} heavy={heavy} showSynced={showSynced} />
+              </>
+            )}
           </>
         )}
       </div>
       <ModernButton svg="top-settings.svg" size={36} id="home_page_settings_button_key" label={t('settings_title')} onClick={() => nav.push(Routes.settings)} />
     </div>
+  );
+}
+
+/** DashboardViewModel.confirmationProgress: the confirmations still awaited (Monero and Zano 10, Wownero 3) */
+function confirmationProgress(w: WalletBase): number {
+  const needed = w.type === 'monero' || w.type === 'zano' ? 10 : w.type === 'wownero' ? 3 : 0;
+  if (!needed) return 1;
+  let got = 0;
+  let want = 0;
+  for (const tx of w.transactions.value) {
+    if (tx.confirmations >= needed) continue;
+    got += tx.confirmations;
+    want += needed;
+  }
+  return want ? got / want : 1;
+}
+
+/** CircularProgressIndicator(strokeWidth: 2, the track primary@50) */
+function ProgressRing({ value, size = 20 }: { value: number; size?: number }) {
+  const r = (size - 2) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="progressbar" aria-valuenow={Math.round(value * 100)} style={{ flex: 'none', transform: 'rotate(-90deg)' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--primary)" stroke-opacity={50 / 255} stroke-width="2" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--primary)" stroke-width="2" stroke-dasharray={`${c * Math.max(0, Math.min(1, value))} ${c}`} />
+    </svg>
+  );
+}
+
+/** the balance's text as MoneyText shows it (8 digits, zeros trimmed, sats for Bitcoin when asked) */
+function moneyText(w: WalletBase, amount: bigint): string {
+  if (w.type === 'bitcoin' && settings.value.displayAmountsInSatoshi) return `${amount} sats`;
+  return `${formatFixed(amount, w.currency.decimals, { fractionDigits: 8 })} ${w.currency.title}`;
+}
+
+/** UnconfirmedBalanceWidget: the balance being confirmed, the confirmations' progress; a tap opens Cake's modal */
+function UnconfirmedBalance({ w, amount }: { w: WalletBase; amount: bigint }) {
+  const cur = w.currency;
+  const open = () =>
+    showSheet((close) => (
+      <div class="col" style={{ gap: '20px', paddingBottom: '16px' }} id="unconfirmed_balance_modal">
+        <TopBar title={t('balance_confirmation')} onClose={() => close()} />
+        <div class="col" style={{ gap: '20px', padding: '0 16px', alignItems: 'center' }}>
+          <span style={{ position: 'relative', width: '100px', height: '100px' }}>
+            <Img src={cur.iconPath ?? undefined} size={100} />
+            <span style={{ position: 'absolute', right: '-3px', bottom: '-3px', width: '36px', height: '36px', boxSizing: 'border-box', borderRadius: '12px', border: '3px solid var(--surface)', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MIcon name="lock" size={24} color="#000" />
+            </span>
+          </span>
+          <div style={{ fontSize: '16px', textAlign: 'center', whiteSpace: 'pre-line' }}>{`${formatFixed(amount, cur.decimals)} ${cur.title} ${t('balance_confirmation_desc_1')}\n\n${t('balance_confirmation_desc_2')}\n\n${t('balance_confirmation_desc_3')}`}</div>
+          <button type="button" class="btn" style={{ width: '100%' }} onClick={() => close()}>{t('close')}</button>
+        </div>
+      </div>
+    ));
+  return (
+    <button type="button" class="rowx gap12" id="unconfirmed_balance" onClick={() => void open()} style={{ marginTop: '12px', width: '100%', height: '48px', background: 'var(--surface-container)', borderRadius: '16px', border: 0, padding: '0 12px', color: 'var(--on-surface)', cursor: 'pointer' }}>
+      <ProgressRing value={confirmationProgress(w)} />
+      <span class="rowx grow" style={{ gap: '4px' }}>
+        <span style={{ color: 'var(--primary)' }}>{moneyText(w, amount)}</span>
+        <span>{t('confirming')}</span>
+      </span>
+      <MIcon name="chevronRight" color="var(--on-surface-variant)" />
+    </button>
   );
 }
 
@@ -277,14 +369,7 @@ function WalletHome({ w }: { w: WalletBase }) {
               />
             )}
             {hidden && s.hiddenBalanceToggles < 10 && <div class="muted" style={{ marginTop: '12px' }}>{t('long_press_show_balance')}</div>}
-            {pending > 0n && !hidden && (
-              <button type="button" class="rowx gap12" id="unconfirmed_balance" onClick={() => void showAlert({ title: t('balance_confirmation'), content: `${formatFixed(pending, cur.decimals)} ${cur.title} ${t('balance_confirmation_desc_1')}\n\n${t('balance_confirmation_desc_2')}\n\n${t('balance_confirmation_desc_3')}`, right: t('close') })} style={{ marginTop: '12px', width: '100%', height: '48px', background: 'var(--surface-container)', borderRadius: '16px', border: 0, padding: '0 12px', color: 'var(--on-surface)', cursor: 'pointer' }}>
-                <Spinner />
-                <span style={{ color: 'var(--primary)' }}>{formatFixed(pending, cur.decimals)} {cur.title}</span>
-                <span class="muted grow" style={{ textAlign: 'start' }}>{t('confirming')}</span>
-                <MIcon name="chevronRight" color="var(--on-surface-variant)" />
-              </button>
-            )}
+            {pending > 0n && !hidden && <UnconfirmedBalance w={w} amount={pending} />}
             {showReminder && (
               <button type="button" class="rowx gap12" onClick={() => nav.push(Routes.seedBackupReminderPage, { walletId: w.id })} id="seed_backup_reminder_card" style={{ marginTop: '24px', width: '100%', background: 'var(--surface-container)', borderRadius: '20px', border: 0, padding: '12px', color: 'var(--on-surface)', cursor: 'pointer', textAlign: 'start' }}>
                 <Icon src="key.svg" size={24} color="var(--primary)" />

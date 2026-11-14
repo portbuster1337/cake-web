@@ -2,6 +2,7 @@
 // sync_status.dart, transaction_info.dart, pending_transaction.dart,
 // wallet_info.dart). Every coin implements WalletBase.
 
+import { etaText, showBlocksRemaining } from './syncEta.ts';
 import { signal, type Signal } from '@preact/signals';
 import type { WalletType, Currency } from '../coins/types.ts';
 import { t } from './i18n.ts';
@@ -35,11 +36,23 @@ export function isSynced(s: SyncStatus): boolean {
 }
 
 /** lib/core/sync_status_title.dart */
-export function syncStatusTitle(s: SyncStatus): string {
+const etaTexts = new WeakMap<SyncStatus, string>();
+
+/** sync_status_title.dart: blocks remaining the first 15 seconds of a sync, then (from 100 blocks) the ETA if chosen */
+export function syncStatusTitle(s: SyncStatus, mode: 'eta' | 'blocksRemaining' = 'blocksRemaining'): string {
   switch (s.kind) {
-    case 'syncing':
-      if (s.blocksLeft === 1) return t('block_remaining');
-      return t('Blocks_remaining', { status: s.blocksLeft });
+    case 'syncing': {
+      const blocks = t('Blocks_remaining', { status: s.blocksLeft });
+      if (showBlocksRemaining()) return s.blocksLeft === 1 ? t('block_remaining') : blocks;
+      if (s.blocksLeft < 100 || mode !== 'eta') return blocks;
+      // one ETA per status (Cake works it out, and smooths it, on each new status)
+      let eta = etaTexts.get(s);
+      if (eta === undefined) {
+        eta = etaText(s.blocksLeft);
+        etaTexts.set(s, eta);
+      }
+      return eta || blocks;
+    }
     case 'syncedTip':
       return t('silent_payments_scanned_tip', { tip: s.tip });
     case 'synced':

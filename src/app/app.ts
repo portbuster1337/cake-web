@@ -5,7 +5,8 @@ import { groupIdentifierOf } from './groups.ts';
 import { loadTrades, monitorActiveTrades, unloadTrades } from '../exchange/trades.ts';
 import { loadOrders, unloadOrders } from '../cakepay/service.ts';
 import { cancelBridgePolling, loadBridgeTransfers, resumeBridgePolling, unloadBridgeTransfers, type ReceiptWallet } from '../integrations/bridge.ts';
-import { signal, computed } from '@preact/signals';
+import { signal, computed, effect } from '@preact/signals';
+import { clearSyncHistory, noteSyncing, resetSyncStart } from '../core/syncEta.ts';
 import { vault } from '../core/vault.ts';
 import { db } from '../core/db.ts';
 import { NetRouter } from '../net/router.ts';
@@ -281,6 +282,26 @@ export async function restoreWalletFromKeys(type: WalletType, o: RestoreKeysOpti
   return persistNew(info, secrets);
 }
 
+let stopSyncEta: (() => void) | undefined;
+
+/** on_wallet_sync_status_change.dart / on_current_wallet_change.dart: the ETA's history follows the wallet's sync */
+function watchSyncEta(w: WalletBase): void {
+  stopSyncEta?.();
+  clearSyncHistory();
+  let last: unknown = null;
+  stopSyncEta = effect(() => {
+    const s = w.syncStatus.value;
+    if (s === last) return;
+    last = s;
+    if (s.kind === 'syncing') noteSyncing(s.blocksLeft);
+    else if (s.kind === 'connected') resetSyncStart();
+    else if (s.kind === 'synced') {
+      resetSyncStart();
+      clearSyncHistory();
+    } else if (s.kind === 'failed') resetSyncStart();
+  });
+}
+
 export async function openWallet(id: string): Promise<WalletBase> {
   const info = walletInfos.value.find((w) => w.id === id) ?? (await vault.get<WalletInfo>(INFO(id)));
   if (!info) throw new Error('Wallet not found');
@@ -296,6 +317,7 @@ export async function openWallet(id: string): Promise<WalletBase> {
     const secrets = await getSecrets(id);
     const w = await m.open(info, secrets);
     currentWallet.value = w;
+    watchSyncEta(w);
     updateSettings({ currentWalletId: id });
     monitorActiveTrades(id);
     if ('transactionReceipt' in w) resumeBridgePolling(w as unknown as ReceiptWallet);
