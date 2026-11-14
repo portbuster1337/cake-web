@@ -39,6 +39,8 @@ exist.
 | Cake 2FA (TOTP) | ✅ | Including the per-action conditions. |
 | Biometrics, screenshot blocking | — | Not available to a web page. |
 | Dashboard: balance cards, card customizer, assets, history, charts, contacts, apps | ✅ | |
+| Charts | ✅ | Cake's charts bloc: each opening of the tab starts over (30 days, market cap), one range for the page and the chart modal, Cake's number formats (its Money printing, the language's separators), sorts, the long-press menu on followed assets (favorite; remove, not the last), the sort menu, pull to refresh, Cake's currency picker to add assets. |
+| Addresses page | ✅ | A tap selects (the picker returns it), the long-press menu (set label, hide or unhide, info) with Cake's label and info dialogs, Monero's received amounts. |
 | History filters, CSV export | ✅ | Transactions, swaps and Cake Pay orders; Cake's 17-column CSV. |
 | AnyPay (send page) | ✅ | Cake's handling of pasted, scanned and home-scanned payment requests: the network from the URI or the address, EIP-681 chains and tokens (Cake's token lists; a chainless contract found on its own chain), "switch to a wallet of that network" or "swap from this one" (the swap page in Cake's from-send mode, fixed rate), the network of a bare EVM address, the recipient-network picker, Cake's errors for unsupported chains and tokens. |
 | Open CryptoPay | ✅ | Cake's handling of merchants' Open CryptoPay QRs (DFX): the invoice and this coin's address and amount from the merchant over Tor, the signed transaction handed to the merchant (broadcast by the wallet first for Monero and Solana), the invoice cancelled when the confirmation is dismissed. |

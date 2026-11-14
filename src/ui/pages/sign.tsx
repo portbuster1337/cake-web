@@ -1,12 +1,11 @@
 // Sign / Verify (lib/src/screens/dashboard/sign_page.dart, widgets/sign_form.dart,
-// widgets/verify_form.dart, lib/view_model/dashboard/sign_view_model.dart),
-// the wallet-address picker (Routes.pickerWalletAddress), Rescan
+// widgets/verify_form.dart, lib/view_model/dashboard/sign_view_model.dart), Rescan
 // (lib/src/screens/rescan/rescan_page.dart) and the read-only Terms of Use
 // (lib/src/screens/disclaimer/disclaimer_page.dart).
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
-import { AddressText, Button, Field, Icon, Page, TopBar, copyText } from '../components/core.tsx';
+import { Button, Field, Icon, Page, TopBar, copyText } from '../components/core.tsx';
 import { showAlert, toast } from '../components/overlays.tsx';
 import { registerRoute, Routes } from '../routes.ts';
 import { nav } from '../nav.ts';
@@ -101,24 +100,6 @@ function SignPage() {
 }
 
 /** the wallet's own (non-change) addresses; picking one returns it */
-function WalletAddressPicker() {
-  const w = currentWallet.value;
-  if (!w) return null;
-  const list = w.addresses.value.filter((a) => !a.isChange && !a.isHidden);
-  return (
-    <Page title={t('addresses')} solid id="wallet_address_picker">
-      <div class="col" style={{ gap: '1px', borderRadius: '16px', overflow: 'hidden' }}>
-        {list.map((a) => (
-          <button type="button" class="col" onClick={() => nav.pop(a.address)} style={{ gap: '4px', padding: '14px 16px', background: 'var(--surface-container)', border: 0, textAlign: 'start', color: 'var(--on-surface)', cursor: 'pointer' }}>
-            {a.label && <span style={{ fontWeight: 500 }}>{a.label}</span>}
-            <span class="mono" style={{ fontSize: '12px' }}><AddressText address={a.address} /></span>
-          </button>
-        ))}
-      </div>
-    </Page>
-  );
-}
-
 // ---------------------------------------------------------------- rescan --
 
 /** BlockchainHeightWidget: a height, or a date turned into a height */
@@ -185,6 +166,5 @@ function ReadDisclaimerPage() {
 }
 
 registerRoute(Routes.signPage, SignPage);
-registerRoute(Routes.pickerWalletAddress, WalletAddressPicker);
 registerRoute(Routes.rescan, RescanPage);
 registerRoute(Routes.readDisclaimer, ReadDisclaimerPage);

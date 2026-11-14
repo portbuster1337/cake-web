@@ -5,6 +5,7 @@ import { useEffect } from 'preact/hooks';
 import { stack, nav } from './nav.ts';
 import { isKeepAlive, routeComponent, Routes } from './routes.ts';
 import { Overlays } from './components/overlays.tsx';
+import { LongPressPopups } from './components/longPress.tsx';
 import { phase, walletInfos } from '../app/app.ts';
 import { WELCOME_PAGE } from './pages/onboarding.tsx';
 import { language } from '../core/i18n.ts';
@@ -47,6 +48,7 @@ export function App() {
         );
       })}
       <Overlays />
+      <LongPressPopups />
     </>
   );
 }

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
-import { AddressText, Button, Field, Icon, Img, MIcon, ModernButton, TopBar, asset, copyText } from '../components/core.tsx';
+import { AddressText, Button, Field, Icon, Img, ListTextField, MIcon, ModernButton, TopBar, asset, copyText } from '../components/core.tsx';
+import { showBlurDialog, showLongPressMenu, useLongPress } from '../components/longPress.tsx';
 import { assetsOf, pickAsset } from './send.tsx';
 import { networkIcon } from './tokens.tsx';
-import { showAlert, showSheet, toast } from '../components/overlays.tsx';
+import { showSheet } from '../components/overlays.tsx';
 import { QrCode, qrBadge } from '../components/qr.tsx';
 import { registerRoute, Routes } from '../routes.ts';
 import { nav } from '../nav.ts';
@@ -248,11 +249,13 @@ function LabelModal({ w, a, close }: { w: WalletBase; a: WalletAddressEntry; clo
   );
 }
 
+/** NewAddressesPage; `picker` (pickerWalletAddress, popOnSelection): a tap returns the address */
 function AddressesPage({ args }: { args?: { hidden?: boolean; picker?: boolean } }) {
   const w = currentWallet.value;
   const [q, setQ] = useState('');
   if (!w) return null;
   const showHidden = !!args?.hidden;
+  const picker = !!args?.picker;
   const type = w.receiveOption;
   const list = w.addresses.value
     .filter((a) => !a.isChange && (type ? a.type === type || !a.type : true) && (a.account ?? 0) === w.currentAccount.value)
@@ -267,14 +270,16 @@ function AddressesPage({ args }: { args?: { hidden?: boolean; picker?: boolean }
           <>
             {w.isMultiAccountsEnabled && <AccountPreviewHeader w={w} />}
             <div class="muted" style={{ fontSize: '10px', textAlign: 'center', marginBottom: '16px' }}>{t('long_press_edit_address')}</div>
-            <button type="button" class="rowx" onClick={() => nav.push(Routes.receiveAddresses, { hidden: true })} style={{ width: '100%', height: '48px', background: 'var(--surface-container)', borderRadius: '16px 16px 0 0', border: 0, padding: '0 16px', justifyContent: 'space-between', color: 'var(--on-surface)', cursor: 'pointer', borderBottom: '1px solid var(--surface-container-high)' }}>
-              <span>{t('show_hidden_addresses')}</span>
-              <Icon src="dropdown_arrow.svg" w={12} h={7} color="var(--primary)" style={{ transform: 'rotate(90deg)' }} />
-            </button>
+            {!picker && (
+              <button type="button" class="rowx" id="show_hidden_addresses" onClick={() => nav.push(Routes.receiveAddresses, { hidden: true })} style={{ width: '100%', height: '48px', background: 'var(--surface-container)', borderRadius: '16px 16px 0 0', border: 0, padding: '0 16px', justifyContent: 'space-between', color: 'var(--on-surface)', cursor: 'pointer', borderBottom: '1px solid var(--surface-container-high)' }}>
+                <span>{t('show_hidden_addresses')}</span>
+                <Img src="dropdown_arrow.svg" w={12} h={7} style={{ transform: 'rotate(90deg)' }} />
+              </button>
+            )}
           </>
         )}
         {list.map((a, i) => (
-          <AddressRow w={w} a={a} selected={a.address === sel} first={showHidden && i === 0} last={i === list.length - 1} />
+          <AddressRow key={a.address} w={w} a={a} selected={a.address === sel} first={(showHidden || picker) && i === 0} last={i === list.length - 1} onSelect={() => (picker ? nav.pop(a.address) : w.selectReceiveAddress(a.address))} />
         ))}
       </div>
       <div style={{ position: 'absolute', left: '30px', right: '30px', bottom: '18px' }}>
@@ -311,57 +316,78 @@ function AccountPreviewHeader({ w }: { w: WalletBase }) {
   );
 }
 
-function AddressRow({ w, a, selected, first, last }: { w: WalletBase; a: WalletAddressEntry; selected: boolean; first: boolean; last: boolean }) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const menu = async () => {
-    const r = await showSheet<string>((close) => (
-      <div style={{ padding: '0 18px 24px' }}>
-        <TopBar title={a.label || t('address')} onClose={() => close()} />
-        <div class="list">
-          <button type="button" class="row tap" onClick={() => close('label')}><span class="lbl">{t('set_label')}</span></button>
-          <button type="button" class="row tap" style={{ color: 'var(--error)' }} onClick={() => close('hide')}><span class="lbl">{a.isHidden ? t('unhide_address') : t('hide_address')}</span></button>
-          <button type="button" class="row tap" onClick={() => close('info')}><span class="lbl">{t('info')}</span></button>
-        </div>
-      </div>
-    ));
-    if (r === 'label') void editLabel(w, a);
-    if (r === 'hide') await (w as any).setAddressHidden?.(a.address, !a.isHidden);
-    if (r === 'info') {
-      const path = (w as any).tree?.displayPath?.({ type: a.type, account: a.account ?? 0, change: !!a.isChange, legacy: false }, a.index);
-      await showAlert({ title: t('info'), content: `Index: ${a.index}${path ? `\nDerivation Path: ${path}` : ''}` });
-    }
-  };
+/** AddressRow's face: the label and the address on a line, the transactions and the balance (Monero: received) */
+function AddressRowFace({ w, a, selected, first, last, handlers }: { w: WalletBase; a: WalletAddressEntry; selected: boolean; first: boolean; last: boolean; handlers?: Record<string, unknown> }) {
+  const sats = w.type === 'bitcoin' && settings.value.displayAmountsInSatoshi;
+  // MoneroSubaddressList: (received / 1e12).toStringAsFixed(6); Electrum wallets: the balance's display string
+  const amount = a.received !== undefined ? (Number(a.received) / 1e12).toFixed(6) : sats ? (a.balance ?? 0n).toString() : formatFixed(a.balance ?? 0n, w.currency.decimals, { fractionDigits: 8 });
   return (
     <div
-      class="col"
-      onClick={() => {
-        w.selectReceiveAddress(a.address);
-        toast(t('address_selected') === 'address_selected' ? t('copied') : t('address_selected'));
-        nav.pop();
-      }}
-      onContextMenu={(e) => { e.preventDefault(); void menu(); }}
-      onPointerDown={() => (timer = setTimeout(() => void menu(), 600))}
-      onPointerUp={() => clearTimeout(timer)}
-      onPointerLeave={() => clearTimeout(timer)}
-      style={{ background: selected ? 'var(--surface-container-highest)' : 'var(--surface-container)', padding: '12px', gap: '6px', cursor: 'pointer', borderTopLeftRadius: first ? '16px' : 0, borderTopRightRadius: first ? '16px' : 0, borderBottomLeftRadius: last ? '16px' : 0, borderBottomRightRadius: last ? '16px' : 0, borderTop: first ? 0 : '1px solid var(--surface-container-high)' }}
+      class="col lp-target"
+      id={handlers ? `address_row_${a.index}` : undefined}
+      {...handlers}
+      style={{ background: selected ? 'var(--surface-container-highest)' : 'var(--surface-container)', transition: 'background 150ms', padding: '12px', gap: '6px', cursor: 'pointer', borderTopLeftRadius: first ? '16px' : 0, borderTopRightRadius: first ? '16px' : 0, borderBottomLeftRadius: last ? '16px' : 0, borderBottomRightRadius: last ? '16px' : 0, borderTop: first ? 0 : '1px solid var(--surface-container-high)' }}
     >
       <div class="rowx" style={{ justifyContent: 'space-between', gap: '8px' }}>
-        <div class="col" style={{ gap: '4px', minWidth: 0 }}>
-          {a.label && <span style={{ fontSize: '12px', fontWeight: 500 }}>{a.label}</span>}
-          <span class="mono" style={{ fontSize: '12px', color: a.label ? 'var(--on-surface-variant)' : undefined }}>
-            <AddressText address={a.address} truncate={!!a.label} />
-          </span>
+        <div class="col" style={{ gap: '6px', minWidth: 0, flex: 1 }}>
+          <div class="rowx" style={{ gap: '4px', minWidth: 0 }}>
+            {a.label && <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--on-surface)', flex: 'none' }}>{a.label}</span>}
+            <span class="mono" style={{ fontSize: '12px', minWidth: 0, color: a.label ? 'var(--on-surface-variant)' : 'var(--on-surface)' }}>
+              <AddressText address={a.address} truncate={!!a.label} />
+            </span>
+          </div>
+          <div class="rowx" style={{ justifyContent: 'space-between', fontSize: '12px', color: 'var(--on-surface-variant)' }}>
+            <span>{t('transactions')}: {a.txCount ?? 0}</span>
+            <span>{a.received !== undefined ? t('received') : t('balance')}: {amount}</span>
+          </div>
         </div>
-        {selected && <Icon src="checkmark.svg" size={16} color="var(--primary)" />}
-      </div>
-      <div class="rowx" style={{ justifyContent: 'space-between', fontSize: '12px', color: 'var(--on-surface-variant)' }}>
-        <span>{t('transactions')}: {a.txCount ?? 0}</span>
-        <span>{t('balance')}: {formatFixed(a.balance ?? 0n, w.currency.decimals)}</span>
+        {selected && <Img src="checkmark.svg" size={25} />}
       </div>
     </div>
   );
 }
 
+/** AddressLabelInputPopup: the label's field over the blurred screen, saved with Enter */
+function editAddressLabel(w: WalletBase, a: WalletAddressEntry) {
+  return showBlurDialog<string>((close) => <AddressLabelInput initial={a.label} onSave={async (label) => { await w.setAddressLabel(a.address, label); close(label); }} />);
+}
+
+function AddressLabelInput({ initial, onSave }: { initial: string; onSave: (label: string) => void }) {
+  const [label, setLabel] = useState(initial);
+  return (
+    <div style={{ padding: '16px', width: '100%', boxSizing: 'border-box' }} id="address_label_popup">
+      <ListTextField label={t('label')} value={label} onInput={setLabel} onEnter={(v) => onSave(v)} autoFocus id="address_label_popup_input" />
+    </div>
+  );
+}
+
+/** AddressInfoPopup: the index and the derivation path */
+function showAddressInfo(w: WalletBase, a: WalletAddressEntry) {
+  const path = (w as any).tree?.displayPath?.({ type: a.type, account: a.account ?? 0, change: !!a.isChange, legacy: false }, a.index) ?? '';
+  return showBlurDialog(() => (
+    <div class="col" id="address_info_popup" style={{ background: 'var(--surface-container-high)', borderRadius: '18px', padding: '8px', gap: '16px', alignItems: 'center', textAlign: 'center', maxWidth: 'calc(100% - 32px)', overflowWrap: 'anywhere' }}>
+      <span>{`Index: ${a.index}`}</span>
+      <span>{`Derivation Path: ${path}`}</span>
+    </div>
+  ));
+}
+
+/** AddressRow: a tap selects (or picks) it; a long press, Cake's menu (set label, hide, info) */
+function AddressRow({ w, a, selected, first, last, onSelect }: { w: WalletBase; a: WalletAddressEntry; selected: boolean; first: boolean; last: boolean; onSelect: () => void }) {
+  const lp = useLongPress((el) => {
+    void showLongPressMenu(el, {
+      child: () => <AddressRowFace w={w} a={a} selected={selected} first={first} last={last} />,
+      items: [
+        { label: t('set_label'), icon: 'address_set_label.svg', id: 'address_menu_label', onSelected: (close) => { close(); void editAddressLabel(w, a); } },
+        { label: a.isHidden ? t('unhide_address') : t('hide_address'), icon: 'address_hide.svg', id: 'address_menu_hide', color: 'var(--error)', onSelected: (close) => { close(); void w.setAddressHidden(a.address, !a.isHidden); } },
+        { label: t('info'), icon: 'assets/images/info_icon.svg', id: 'address_menu_info', onSelected: (close) => { close(); void showAddressInfo(w, a); } },
+      ],
+    });
+  });
+  return <AddressRowFace w={w} a={a} selected={selected} first={first} last={last} handlers={{ ...lp, onClick: onSelect }} />;
+}
+
 registerRoute(Routes.receive, ReceivePage);
 registerRoute(Routes.newReceivePage, ReceivePage);
 registerRoute(Routes.receiveAddresses, AddressesPage);
+registerRoute(Routes.pickerWalletAddress, () => <AddressesPage args={{ picker: true }} />);

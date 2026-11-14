@@ -203,6 +203,8 @@ export interface WalletAddressEntry {
   isChange?: boolean;
   isHidden?: boolean;
   balance?: bigint;
+  /** Monero: what the subaddress received (Cake lists it instead of a balance) */
+  received?: bigint;
   txCount?: number;
 }
 
@@ -426,6 +428,8 @@ export abstract class WalletBase {
     return null;
   }
   async setAddressLabel(_address: string, _label: string): Promise<void> {}
+  /** WalletAddressListViewModel.toggleHideAddress */
+  async setAddressHidden(_address: string, _hidden: boolean): Promise<void> {}
 
   /** explorer URL for a tx */
   abstract explorerUrl(txid: string): string | undefined;

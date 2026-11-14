@@ -198,10 +198,18 @@ export class MoneroWallet extends WalletBase {
     this.accounts.value = accounts.map((a, i) => ({ index: a.index, label: labels[i] || (a.index === 0 ? t('primary_account') === 'primary_account' ? 'Primary account' : t('primary_account') : `Account #${a.index}`), balance: a.balance, address: a.address }));
     this.balances.value = { xmr: { available: bal.unlocked, full: bal.balance, pending: bal.balance - bal.unlocked } };
     const txs = await this.api.txs().catch(() => [] as XmrTx[]);
+    // subaddress_list.dart getAllSubaddresses: the incoming transactions naming a subaddress, and their amounts
     const counts = new Map<number, number>();
-    for (const tx of txs) if (tx.accountIndex === acc) for (const s of tx.subaddressIndices) counts.set(s, (counts.get(s) ?? 0) + 1);
+    const received = new Map<number, bigint>();
+    for (const tx of txs) {
+      if (tx.isOutgoing || tx.accountIndex !== acc) continue;
+      for (const s of new Set(tx.subaddressIndices)) {
+        counts.set(s, (counts.get(s) ?? 0) + 1);
+        received.set(s, (received.get(s) ?? 0n) + tx.amount);
+      }
+    }
     const hidden = new Set(this.#hiddenAddresses());
-    const entries: WalletAddressEntry[] = subs.map((s) => ({ address: s.address, label: s.label, index: s.index, account: acc, isUsed: s.used, isHidden: hidden.has(s.address), balance: s.balance, txCount: counts.get(s.index) ?? 0 }));
+    const entries: WalletAddressEntry[] = subs.map((s) => ({ address: s.address, label: s.label, index: s.index, account: acc, isUsed: s.used, isHidden: hidden.has(s.address), balance: s.balance, received: received.get(s.index) ?? 0n, txCount: counts.get(s.index) ?? 0 }));
     // Cake order: index 0 first, then newest first
     const ordered = entries.length > 2 ? [entries[0], ...entries.slice(1).reverse()] : entries;
     this.addresses.value = ordered;
@@ -301,6 +309,15 @@ export class MoneroWallet extends WalletBase {
       i++;
     }
     return this.receiveAddress.value;
+  }
+
+  /** toggleHideAddress: walletAddresses.hiddenAddresses, then the subaddress list again */
+  async setAddressHidden(address: string, hidden: boolean): Promise<void> {
+    const list = this.#hiddenAddresses();
+    (this.info as any).hiddenAddresses = hidden ? [...new Set([...list, address])] : list.filter((a) => a !== address);
+    await this.ctx.saveInfo(this.info);
+    if (hidden && this.receiveAddress.value === address) this.receiveAddress.value = '';
+    await this.refreshViews().catch(() => {});
   }
 
   async hideAddressAfterExchange(address: string): Promise<void> {

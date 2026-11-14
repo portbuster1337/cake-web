@@ -75,7 +75,8 @@ export function currencyFromString(name: string, wallet?: Currency): Currency | 
   const n = name.toLowerCase();
   const t = ALL_CURRENCIES.find((c) => c.title.toLowerCase() === n && (c.tag === null || c.tag === name || c.tag === wallet?.title || c.tag === wallet?.tag));
   if (t) return t;
-  const f = ALL_CURRENCIES.find((c) => c.fullName?.toLowerCase() === n);
+  // by full name: Cake compares the lower-cased full name with the name as given
+  const f = ALL_CURRENCIES.find((c) => c.fullName?.toLowerCase() === name);
   if (f) return f;
   return CURRENCY_DEFS.find((c) => c.name === n);
 }

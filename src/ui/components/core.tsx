@@ -323,6 +323,20 @@ export function Field({ value, onInput, placeholder, label, error, hint, type = 
   );
 }
 
+/** ListItemTextFieldWidget: a 50 px list row holding a text field whose label floats up once it has focus or text */
+export function ListTextField({ label, value, onInput, onEnter, autoFocus, id }: { label: string; value: string; onInput: (v: string) => void; onEnter?: (v: string) => void; autoFocus?: boolean; id?: string }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) ref.current?.focus();
+  }, []);
+  return (
+    <label class={`lfield${value ? ' filled' : ''}`}>
+      <span>{label}</span>
+      <input ref={ref} id={id} value={value} spellcheck={false} autoComplete="off" onInput={(e) => onInput((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && onEnter?.((e.target as HTMLInputElement).value)} />
+    </label>
+  );
+}
+
 export function Spinner({ large }: { large?: boolean }) {
   return <span class={`spinner${large ? ' lg' : ''}`} role="progressbar" />;
 }

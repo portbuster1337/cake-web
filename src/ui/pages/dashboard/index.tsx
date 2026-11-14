@@ -14,7 +14,7 @@ import { HomePage } from './home.tsx';
 import { WalletListPage } from './wallets.tsx';
 import { ContactListPage } from './contacts.tsx';
 import { CakeFeaturesPage } from './apps.tsx';
-import { ChartsPage } from './charts.tsx';
+import { ChartsPage, initCharts } from './charts.tsx';
 
 export const dashboardTab = signal(0);
 
@@ -57,7 +57,11 @@ function NavBar() {
             type="button"
             aria-label={t(it.key)}
             id={`nav_${it.key}`}
-            onClick={() => (dashboardTab.value = it.i)}
+            onClick={() => {
+              dashboardTab.value = it.i;
+              // PageOpenListener.onPageOpen: the charts start over on every tap of their tab
+              if (it.key === 'charts') void initCharts();
+            }}
             style={{
               height: '56px',
               minWidth: '48px',
