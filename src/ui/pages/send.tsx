@@ -1,5 +1,6 @@
 // Send (lib/new-ui/pages/send_page.dart + send_page widgets).
 
+import { pickFiat } from './settings/pages.tsx';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
 import { AddressText, Button, Icon, Img, MIcon, ModernButton, TopBar, Spinner, SyncingIndicator } from '../components/core.tsx';
@@ -311,14 +312,19 @@ function SendForm({ w, args }: { w: WalletBase; args?: SendArgs }) {
               <div class="rowx grow" style={{ background: 'var(--surface-container)', padding: '0 12px', gap: '8px', minHeight: '56px' }}>
                 <input id="send_amount" inputMode="decimal" value={r.sendAll ? t('all') : r.amount} placeholder={r.fiatMode ? '0.00' : '0.00'} readOnly={r.sendAll} onFocus={() => r.sendAll && update({ sendAll: false, amount: '' })} onInput={(e) => update({ amount: (e.target as HTMLInputElement).value.replace(',', '.'), sendAll: false })} style={{ flex: 1, minWidth: 0, background: 'none', border: 0, outline: 0, color: 'var(--on-surface)', fontSize: '16px' }} />
               </div>
-              <button type="button" class="rowx gap8" style={{ padding: '0 12px', background: 'none', border: 0, color: 'var(--on-surface)', cursor: assets.length > 1 ? 'pointer' : 'default', minHeight: '56px' }} onClick={async () => {
-                if (assets.length < 2 || r.fiatMode) return;
+              <button type="button" class="rowx gap8" id="send_amount_currency" style={{ padding: '0 12px', background: 'none', border: 0, color: 'var(--on-surface)', cursor: assets.length > 1 || r.fiatMode ? 'pointer' : 'default', minHeight: '56px' }} onClick={async () => {
+                // _presentCurrencyPicker: in fiat the app's fiat currency (SendViewModel.setFiatCurrency), else the asset
+                if (r.fiatMode) {
+                  await pickFiat();
+                  return;
+                }
+                if (assets.length < 2) return;
                 const k = await pickAsset(w, assets, asset.key);
                 if (k) update({ asset: k, sendAll: false });
               }}>
                 {assets.length > 1 && !r.fiatMode && <Img src={asset.icon} size={24} round />}
                 <span>{r.fiatMode ? fiatCode : asset.symbol}</span>
-                {assets.length > 1 && !r.fiatMode && <Icon src="chooser.svg" size={12} color="var(--primary)" />}
+                {(assets.length > 1 || r.fiatMode) && <Icon src="chooser.svg" size={12} color="var(--primary)" />}
               </button>
             </div>
             {errors.amount && <div class="field-error">{errors.amount}</div>}
