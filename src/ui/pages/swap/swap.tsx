@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { t } from '../../../core/i18n.ts';
-import { Button, Icon, Img, MIcon, ModernButton, Spinner, TopBar } from '../../components/core.tsx';
+import { Button, Icon, Img, MIcon, ModernButton, Spinner, SyncingIndicator, TopBar } from '../../components/core.tsx';
 import { showAlert, showSheet, toast } from '../../components/overlays.tsx';
 import { requireAuth } from '../../components/auth.tsx';
 import { registerKeepAlive, registerRoute, Routes } from '../../routes.ts';
@@ -509,6 +509,30 @@ function ProviderPreview({ vm }: { vm: ExchangeVM }) {
   );
 }
 
+/** AnyPaySwapFooter (from-send swaps): what will be sent, and the provider */
+function AnyPaySwapFooter({ vm }: { vm: ExchangeVM }) {
+  if (vm.noProviderForPair.value) {
+    return <div id="swap_anypay_no_provider" style={{ height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', borderRadius: '18px', border: '1px solid var(--error)', color: 'var(--error)', letterSpacing: '-0.07px' }}>{t('no_providers_available')}</div>;
+  }
+  if (!vm.depositAmount) return null;
+  const provider = vm.forcedProvider.value ?? vm.providerDisplay.value;
+  const fiat = vm.roundedDepositAmountFiat(2);
+  const showFiat = settings.value.fiatApiMode !== 'disabled' && !!fiat;
+  return (
+    <div class="rowx" style={{ gap: '12px' }} id="swap_anypay_footer">
+      <div style={{ flex: 1, minWidth: 0, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 16px', borderRadius: '18px', border: '1px solid var(--primary)', fontSize: '12px', fontWeight: 500, letterSpacing: '-0.06px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span>{`${vm.depositAmount} ${symbolOf(vm.depositCurrency.value)}`}</span>
+        {showFiat && <span style={{ color: 'var(--on-surface-variant)', whiteSpace: 'pre' }}>{`  ≈ ${settings.value.fiatCurrency}${fiat}`}</span>}
+      </div>
+      <button type="button" class="rowx" id="swap_anypay_provider" disabled={!provider} onClick={() => provider && nav.push(Routes.swapProviderSelector, { vm })} style={{ flex: 'none', height: '48px', padding: '0 12px', gap: '8px', borderRadius: '24px', border: 0, background: 'var(--surface-container)', color: 'var(--on-surface)', cursor: provider ? 'pointer' : 'default' }}>
+        {provider ? <Img src={provider.description.image} size={24} /> : <Spinner />}
+        <span style={{ letterSpacing: '-0.07px' }}>{provider?.title ?? `${t('finding_provider')}...`}</span>
+        <Icon src="chooser.svg" size={12} color="var(--on-surface-variant)" />
+      </button>
+    </div>
+  );
+}
+
 // -------------------------------------------------------------- the page --
 
 type SwapArgs = { from?: string; to?: string; address?: string; amount?: string; fromSend?: SwapIntent };
@@ -690,14 +714,9 @@ function SwapForm({ w, args }: { w: WalletBase; args?: SwapArgs }) {
         <AmountBox vm={vm} receiver={true} error={validated ? errors.receive : null} onEdited={() => setValidated(false)} hideTitle={!!fromSend} />
       </div>
       <div class="col" style={{ gap: '12px', padding: '12px 18px 24px', flex: 'none' }}>
-        {!synced && (
-          <div class="rowx" style={{ height: '48px', borderRadius: '999px', background: WARN_BG, padding: '0 12px', gap: '10px', color: WARN_FG }} id="swap_syncing">
-            <Spinner />
-            <span>{t('synchronizing')}...</span>
-          </div>
-        )}
-        {vm.isFixedRateMode.value && <div class="center" style={{ fontSize: '12px', color: 'var(--on-surface-variant)' }} id="swap_fixed_text">{t('exchange_rate_is_fixed')}</div>}
-        <ProviderPreview vm={vm} />
+        {!synced && <SyncingIndicator status={w.syncStatus.value} id="swap_syncing" />}
+        {!fromSend && vm.isFixedRateMode.value && <div class="center" style={{ fontSize: '12px', color: 'var(--on-surface-variant)' }} id="swap_fixed_text">{t('exchange_rate_is_fixed')}</div>}
+        {fromSend ? <AnyPaySwapFooter vm={vm} /> : <ProviderPreview vm={vm} />}
         <Button id="exchange_page_exchange_button_key" loading={creating} disabled={vm.swapDisabled} onClick={() => void onSwap()}>
           {vm.isAvailableInSelected ? t('swap') : t('change_selected_exchanges')}
         </Button>

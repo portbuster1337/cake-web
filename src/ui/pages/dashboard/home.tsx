@@ -12,7 +12,7 @@ import { Icon, Img, MIcon, ModernButton, TopBar, Spinner } from '../../component
 import { showSheet, toast } from '../../components/overlays.tsx';
 import { currentWallet, walletLoading, walletError, torStatus } from '../../../app/app.ts';
 import { settings, updateSettings } from '../../../app/settings.ts';
-import { isSynced, syncStatusTitle, type WalletBase } from '../../../core/wallet.ts';
+import { isSynced, syncProgress, syncStatusTitle, type WalletBase } from '../../../core/wallet.ts';
 import { formatFixed } from '../../../core/amount.ts';
 import { apiString, fiatValue, formatFiatAmount, prices, watchPrice } from '../../../app/prices.ts';
 import { assetUrl, WALLET_TYPE_NAME } from '../../../coins/types.ts';
@@ -32,16 +32,9 @@ const ADDITIONAL_BALANCE = new Set(['monero', 'wownero', 'zano', 'decred', 'zcas
 const FAIL_STATUSES = new Set(['failed', 'lostConnection', 'timedOut', 'unsupported']);
 const PROGRESS_STATUSES = new Set(['syncing', 'notConnected', 'synchronizing', 'attempting', 'startingScan', 'syncedTip', 'processing', 'connecting', 'connected']);
 
-/** SyncStatus.progress() */
-function statusProgress(s: WalletBase['syncStatus']['value']): number {
-  if (s.kind === 'syncing') return s.progress;
-  if (s.kind === 'processing') return 0.99;
-  return s.kind === 'synced' || s.kind === 'syncedTip' ? 1 : 0;
-}
-
 /** ChainIcon: the coin's icon; for wallets that sync blocks, the progress ring around it (green while "Synced" shows) */
 function ChainIcon({ w, heavy, showSynced }: { w: WalletBase; heavy: boolean; showSynced: boolean }) {
-  const p = statusProgress(w.syncStatus.value);
+  const p = syncProgress(w.syncStatus.value);
   const done = !showSynced && (!heavy || p >= 1);
   const r = 17;
   const c = 2 * Math.PI * r;

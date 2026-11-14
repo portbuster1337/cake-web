@@ -72,18 +72,22 @@ export function formatEta(ms: number): string {
   return `${h}h ${m}min ${s}s`;
 }
 
+/** getFormattedEta: the remaining time (smoothed), none for a day or more or under 100 blocks */
+export function formattedEta(blocksLeft: number): string | null {
+  const rate = blockRate();
+  // calculateEta: no rate is two days away
+  let ms = rate === 0 ? 2 * 86_400_000 : Math.round(blocksLeft / rate);
+  if (ms >= 86_400_000 || blocksLeft < 100) return null;
+  ms = smooth(ms);
+  lastEta = ms;
+  return formatEta(ms);
+}
+
 /** getFormattedEtaWithPlaceholder: the remaining time, or "Syncing..." while there is too little to go on */
 export function etaText(blocksLeft: number): string {
   if (history.length >= MIN_POINTS) {
-    const rate = blockRate();
-    // calculateEta: no rate is two days away
-    let ms = rate === 0 ? 2 * 86_400_000 : Math.round(blocksLeft / rate);
-    // getFormattedEta: nothing for a day or more, or under 100 blocks
-    if (ms < 86_400_000 && blocksLeft >= 100) {
-      ms = smooth(ms);
-      lastEta = ms;
-      return formatEta(ms);
-    }
+    const eta = formattedEta(blocksLeft);
+    if (eta !== null) return eta;
   }
   return 'Syncing...';
 }

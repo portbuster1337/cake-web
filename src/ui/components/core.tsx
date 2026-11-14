@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
 import { nav } from '../nav.ts';
 import { toast } from './overlays.tsx';
+import { syncProgress, type SyncStatus } from '../../core/wallet.ts';
+import { formattedEta } from '../../core/syncEta.ts';
 
 export function asset(path: string): string {
   if (path.startsWith('./') || path.startsWith('http') || path.startsWith('data:') || path.startsWith('blob:')) return path;
@@ -334,6 +336,31 @@ export function ListTextField({ label, value, onInput, onEnter, autoFocus, id }:
       <span>{label}</span>
       <input ref={ref} id={id} value={value} spellcheck={false} autoComplete="off" onInput={(e) => onInput((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && onEnter?.((e.target as HTMLInputElement).value)} />
     </label>
+  );
+}
+
+const etaCache = new WeakMap<object, string>();
+
+/** SendSyncingIndicator: "Synchronizing... <ETA>", with the progress ring once there is progress */
+export function SyncingIndicator({ status, id }: { status: SyncStatus; id?: string }) {
+  const p = syncProgress(status);
+  let eta = '';
+  if (status.kind === 'syncing') {
+    const cached = etaCache.get(status);
+    eta = cached ?? formattedEta(status.blocksLeft) ?? '';
+    if (cached === undefined) etaCache.set(status, eta);
+  }
+  const r = 10.5;
+  const c = 2 * Math.PI * r;
+  return (
+    <div class="rowx" id={id} role="status" style={{ alignSelf: 'center', height: '48px', borderRadius: '99999px', background: '#8E5800', padding: '0 12px', gap: '10px', color: '#FFB84E', maxWidth: '100%' }}>
+      {p > 0 && (
+        <svg width="24" height="24" viewBox="0 0 24 24" style={{ flex: 'none', transform: 'rotate(-90deg)' }} aria-hidden="true">
+          <circle cx="12" cy="12" r={r} fill="none" stroke="#FFB84E" stroke-width="3" stroke-linecap="round" stroke-dasharray={`${c * Math.min(1, p)} ${c}`} />
+        </svg>
+      )}
+      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${t('synchronizing')}... ${eta}`}</span>
+    </div>
   );
 }
 

@@ -25,8 +25,10 @@ export type SyncStatus =
   | { kind: 'timedOut' }
   | { kind: 'processing'; message?: string };
 
+/** SyncStatus.progress() */
 export function syncProgress(s: SyncStatus): number {
   if (s.kind === 'syncing') return s.progress;
+  if (s.kind === 'processing') return 0.99;
   if (s.kind === 'synced' || s.kind === 'syncedTip') return 1;
   return 0;
 }

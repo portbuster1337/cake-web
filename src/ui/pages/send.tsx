@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { t } from '../../core/i18n.ts';
-import { AddressText, Button, Icon, Img, MIcon, ModernButton, TopBar, Spinner } from '../components/core.tsx';
+import { AddressText, Button, Icon, Img, MIcon, ModernButton, TopBar, Spinner, SyncingIndicator } from '../components/core.tsx';
 import { showAlert, showSheet, toast } from '../components/overlays.tsx';
 import { requireAuth } from '../components/auth.tsx';
 import { registerRoute, Routes } from '../routes.ts';
@@ -375,12 +375,7 @@ function SendForm({ w, args }: { w: WalletBase; args?: SendArgs }) {
           )}
         </div>
         <div class="col" style={{ gap: '12px', padding: '16px 0 24px' }}>
-          {!synced && (
-            <div class="rowx" style={{ height: '48px', borderRadius: '999px', background: '#8E5800', padding: '0 12px', gap: '10px', color: '#FFB84E' }}>
-              <Spinner />
-              <span>{t('synchronizing')}...</span>
-            </div>
-          )}
+          {!synced && <SyncingIndicator status={w.syncStatus.value} id="send_syncing" />}
           {recipients.length > 1 && (
             <div class="rowx" style={{ justifyContent: 'center', gap: '8px' }}>
               {recipients.map((_, i) => (
