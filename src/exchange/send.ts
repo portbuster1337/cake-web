@@ -9,6 +9,8 @@ import { EVM_TOKEN_TAGS } from '../coins/tokens.gen.ts';
 import type { PendingTransaction, WalletBase } from '../core/wallet.ts';
 import { builtinOf, titleTagEqual, type SwapCurrency } from './currency.ts';
 import { executeJupiterSwap, JupiterSwapFailedError } from './providers/jupiter.ts';
+import { EVM_NATIVE, methodSelector, registerSwapsXyzTx, SWAP_AND_EXECUTE_SIG, TRANSFER_SIG, ZERO_ADDRESS } from './providers/swapsxyz.ts';
+import { decodeWord, encodeCall, SELECTOR, unhex } from '../coins/evm/eth.ts';
 import { saveTrade, findTrade } from './trades.ts';
 import { PROVIDERS, STATES, type Trade } from './types.ts';
 
@@ -73,6 +75,15 @@ export async function buildSwapTransaction(w: WalletBase, trade: Trade): Promise
   const err = checkIfCanSend(trade, w);
   if (err) throw new Error(err);
   if (trade.providerRaw === PROVIDERS.jupiter.raw && w.type === 'solana') return jupiterTransaction(w, trade);
+  if (trade.providerRaw === PROVIDERS.swapsXyz.raw) {
+    const p = isEvm(w.type) && trade.routerData && trade.routerData !== '0x' ? await swapsXyzTransaction(w as CallWallet, trade) : await depositTransaction(w, trade);
+    return withSwapsXyz(trade, p);
+  }
+  return depositTransaction(w, trade);
+}
+
+/** a payment of the deposit to the trade's address */
+async function depositTransaction(w: WalletBase, trade: Trade): Promise<PendingTransaction> {
   const asset = walletAssetFor(w, trade.from) ?? w.currency.key;
   const amount = amountOf(trade.amount, decimalsOf(w, asset));
   const pending = await w.createTransaction({
@@ -86,6 +97,111 @@ export async function buildSwapTransaction(w: WalletBase, trade: Trade): Promise
     throw new Error(`The amount to send (${formatFixed(pending.amount, decimalsOf(w, asset))}) does not match the swap amount (${trade.amount}). Please create a new swap.`);
   }
   return pending;
+}
+
+export interface CallWallet extends WalletBase {
+  address: string;
+  chainId?: number;
+  callContract(to: string, data: Uint8Array): Promise<string>;
+  createContractCall(to: string, data: Uint8Array, opts?: { priority?: string; amount?: bigint; amountDecimals?: number; value?: bigint; record?: { currency: string; amount: bigint }; fallbackGas?: bigint }): Promise<PendingTransaction>;
+}
+
+const USDT_ETHEREUM = '0xdac17f958d2ee523a2206206994597c13d831ec7';
+/** BigInt.tryParse (decimal, or hex after 0x) */
+const tryBig = (s: string | undefined) => {
+  const v = (s ?? '').trim().replace(/n$/, '');
+  return /^\d+$/.test(v) || /^0x[0-9a-f]+$/i.test(v) ? BigInt(v) : 0n;
+};
+const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
+/** getAllowance (null when the node cannot say) */
+async function allowanceOf(w: CallWallet, token: string, spender: string): Promise<bigint | null> {
+  try {
+    return decodeWord(await w.callContract(token, encodeCall(SELECTOR.allowance, [{ address: w.address }, { address: spender }])));
+  } catch {
+    return null;
+  }
+}
+
+/** _waitForApprovalUpdate: the allowance read every second, 30 times, until it reaches the amount (or drops to it) */
+async function waitForAllowance(w: CallWallet, token: string, spender: string, amount: bigint, exact = false): Promise<boolean> {
+  for (let i = 0; i < 30; i++) {
+    const a = await allowanceOf(w, token, spender);
+    if (a !== null && (exact ? a <= amount : a >= amount)) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
+/** buildApprovalNeeded, committed */
+async function approve(w: CallWallet, token: string, spender: string, amount: bigint, priority: string): Promise<void> {
+  const p = await w.createContractCall(token, encodeCall(SELECTOR.approve, [{ address: spender }, { uint: amount }]), { priority });
+  await p.commit();
+}
+
+/**
+ * SendViewModel.createTransaction's Swaps.xyz path: a transfer call as it is; swapAndExecute after the router may take
+ * the token (an approval of the amount, Tether on Ethereum first back to zero), with the call's value
+ */
+export async function swapsXyzTransaction(w: CallWallet, trade: Trade): Promise<PendingTransaction> {
+  const routerTo = trade.inputAddress;
+  const data = trade.routerData!;
+  if (!routerTo) throw new Error('Invalid router address');
+  const priority = settings.peek().priority[w.type] ?? w.defaultPriority();
+  const value = tryBig(trade.routerValue);
+  const selector = methodSelector(data);
+  const failed = (e: unknown) => new Error(`Failed to create Swaps.xyz transaction - ${(e as Error).message}`);
+  if (selector === TRANSFER_SIG) {
+    try {
+      return await w.createContractCall(routerTo, unhex(data), { priority, value: 0n, fallbackGas: 300_000n });
+    } catch (e) {
+      throw failed(e);
+    }
+  }
+  if (selector !== SWAP_AND_EXECUTE_SIG) throw new Error('Unsupported Swaps.xyz transaction type');
+  const token = (trade.sourceTokenAddress ?? '').toLowerCase();
+  const required = tryBig(trade.sourceTokenAmountRaw);
+  const native = !token || token === ZERO_ADDRESS || token === EVM_NATIVE;
+  // isApprovalRequired: none for the coin; an unreadable allowance counts as too low
+  if (!native && required > 0n) {
+    const current = await allowanceOf(w, token, routerTo);
+    if (current === null || current < required) {
+      if (w.chainId === 1 && token === USDT_ETHEREUM && current !== null && current > 0n) {
+        await approve(w, token, routerTo, 0n, priority);
+        if (!(await waitForAllowance(w, token, routerTo, 0n, true))) throw new Error('Failed to reset USDT allowance. Please try again.');
+      }
+      await approve(w, token, routerTo, required, priority);
+      if (!(await waitForAllowance(w, token, routerTo, required))) throw new Error('Approval transaction failed or timed out on-chain. Try again.');
+    }
+  }
+  // createCallDataTransaction: the token must be in the wallet, with enough of it
+  const tokenKey = native ? w.currency.key : ((w as any).tokens as { address: string }[] | undefined)?.find((x) => x.address.toLowerCase() === token)?.address;
+  if (!native && required > 0n) {
+    if (!tokenKey) throw failed(new Error('Insufficient token balance (Token not found in wallet).'));
+    if ((w.balances.value[tokenKey]?.available ?? 0n) < required) throw failed(new Error(`Insufficient ${trade.from?.title ?? ''} balance to cover the transaction amount.`));
+  }
+  try {
+    return await w.createContractCall(routerTo, unhex(data), { priority, value, fallbackGas: 300_000n, amount: native ? value : required, amountDecimals: native ? 18 : trade.sourceTokenDecimals ?? 18, record: { currency: tokenKey ?? w.currency.key, amount: native ? value : required } });
+  } catch (e) {
+    throw failed(e);
+  }
+}
+
+/**
+ * ExchangeTradeViewModel.confirmSending: the trade keeps the transaction's hash; after the broadcast,
+ * registerSwapsXyzTransaction (alt-VM routes)
+ */
+async function withSwapsXyz(trade: Trade, p: PendingTransaction): Promise<PendingTransaction> {
+  await saveTrade({ ...(findTrade(trade.id) ?? trade), txId: p.id });
+  return {
+    ...p,
+    commit: async () => {
+      await p.commit();
+      const vmId = (trade.providerId ?? '').toLowerCase();
+      const chainId = /^\d+$/.test(trade.router ?? '') ? Number(trade.router) : 0;
+      if (trade.needToRegisterInSwapXyz && vmId && p.id && chainId > 0) void registerSwapsXyzTx({ txId: trade.id, txHash: p.id, chainId, vmId });
+    },
+  };
 }
 
 /** signAndPrepareJupiterSwapTransaction: sign Jupiter's transaction; sending it is Jupiter's /execute */

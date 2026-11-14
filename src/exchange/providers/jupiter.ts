@@ -54,8 +54,10 @@ export function jupiterErrorMessage(code: number | undefined, message: string): 
 
 /** a failed swap that still has a signature (to look up on an explorer) */
 export class JupiterSwapFailedError extends Error {
-  constructor(message: string, readonly signature: string) {
+  readonly signature: string;
+  constructor(message: string, signature: string) {
     super(message);
+    this.signature = signature;
   }
 }
 

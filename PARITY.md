@@ -60,7 +60,7 @@ status updates every 5 minutes.
 | --- | --- | --- |
 | SwapTrade, XOSwap, NEAR Intents, Jupiter | ✅ keyless | Orders verified over Tor. NEAR Intents without Cake's JWT adds 1Click's own fee. |
 | ChangeNOW, Trocador (onion API), Chainflip, WhyNot | 🔑 | With the user's API key. |
-| Swaps.XYZ | ❌ | Needs EVM call-data routing not built yet. |
+| Swaps.XYZ | 🔑 | With the user's API key: Cake's routes, floating rates; an EVM deposit is Cake's router call (a token transfer, or swapAndExecute after the approval, Tether reset to zero first), other chains pay a deposit address and alt-VM transactions are registered. |
 | SideShift, SimpleSwap, Exolix, StealthEx, THORChain | — | Not active in Cake 6.5.3 either. |
 
 This client takes no markup or affiliate fee of its own.
@@ -86,6 +86,6 @@ The provider's checkout page opens in the browser from a button, outside the app
 | NFTs | ✅ | Cake's NFTs tab (Ethereum, Base, Polygon, Arbitrum, BNB Smart Chain, Solana): listing, import, details, sending Solana NFTs. Moralis with the user's key; without one, Blockscout lists the EVM NFTs (not BNB Smart Chain), the wallet's token accounts the Solana ones, and EVM imports read the token contract. IPFS art and metadata come from gateways that still answer over Tor (ipfs.io, which Cake uses, retired in September 2026). |
 | WalletConnect | ❌ | The WalletConnect relay is a WebSocket, which cannot go through Tor here yet. |
 | Lightning, MWEB, Payjoin | ❌ | Need Cake's native services. |
-| AnonPay invoices, exchange templates | ❌ | |
+| AnonPay invoices, exchange templates | — | Not in Cake's new UI: only its old screens create them (the new history merely lists old AnonPay invoices). |
 
 ✅ done · 🔑 needs the user's API key · ◐ partly · ⏳ planned · ❌ not available · — not applicable

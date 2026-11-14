@@ -416,7 +416,7 @@ export class EvmWallet extends WalletBase implements TokenWallet {
   }
 
   /** calculateActualEstimatedFeeForCreateTransaction */
-  async #gasParams(priority: EvmPriority, call: { to: string; value: bigint; data?: Uint8Array }): Promise<{ gas: bigint; maxFeePerGas: bigint }> {
+  async #gasParams(priority: EvmPriority, call: { to: string; value: bigint; data?: Uint8Array }, fallbackGas?: bigint): Promise<{ gas: bigint; maxFeePerGas: bigint }> {
     const res = await this.#batch(
       [
         { method: 'eth_gasPrice', params: [] },
@@ -430,7 +430,11 @@ export class EvmWallet extends WalletBase implements TokenWallet {
     const baseFee = res[1] instanceof RpcError || !res[1]?.baseFeePerGas ? null : fromQuantity(res[1].baseFeePerGas);
     const prio = this.chain.hasPriorityFee ? this.chain.priorityFee(priority) : 0n;
     const maxFeePerGas = bufferedMaxFeePerGas(baseFee, gasPrice, prio, this.chain.hasPriorityFee);
-    if (res[2] instanceof RpcError) throw new Error(`Failed to calculate transaction fees: ${res[2].message}`);
+    if (res[2] instanceof RpcError) {
+      // createCallDataTransaction: a swap whose estimate fails (it depends on the block) gets a safe limit
+      if (fallbackGas !== undefined) return { gas: fallbackGas, maxFeePerGas };
+      throw new Error(`Failed to calculate transaction fees: ${res[2].message}`);
+    }
     return { gas: fromQuantity(res[2]), maxFeePerGas };
   }
 
@@ -530,10 +534,10 @@ export class EvmWallet extends WalletBase implements TokenWallet {
    * A call into a contract (an approval, a deposit…): the gas estimated by the node, the fee checked against the coin
    * balance, signed. `amount` is only what the confirmation shows (in `amountDecimals`).
    */
-  async createContractCall(to: string, data: Uint8Array, opts: { priority?: string; amount?: bigint; amountDecimals?: number; value?: bigint; record?: { currency: string; amount: bigint } } = {}): Promise<PendingTransaction> {
+  async createContractCall(to: string, data: Uint8Array, opts: { priority?: string; amount?: bigint; amountDecimals?: number; value?: bigint; record?: { currency: string; amount: bigint }; fallbackGas?: bigint } = {}): Promise<PendingTransaction> {
     const priority = this.#prio(opts.priority ?? this.defaultPriority());
     const value = opts.value ?? 0n;
-    const g = await this.#gasParams(priority, { to, value, data });
+    const g = await this.#gasParams(priority, { to, value, data }, opts.fallbackGas);
     const fee = g.gas * g.maxFeePerGas;
     const nativeAvail = this.balances.value[this.currency.key]?.available ?? 0n;
     if (fee + value > nativeAvail) throw new Error(`Transaction failed due to insufficient ${this.currency.title} balance to cover the fees.`);
