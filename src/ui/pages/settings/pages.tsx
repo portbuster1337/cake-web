@@ -201,8 +201,10 @@ function FiatPicker({ close, selected }: { close: (v?: string) => void; selected
   const sel = selected;
   const ql = q.toLowerCase();
   const match = (c: string) => !ql || c.toLowerCase().includes(ql) || FIAT_NAMES[c].toLowerCase().includes(ql);
-  const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CNY'].filter((c) => c !== sel && match(c));
-  const all = [...FIAT_CURRENCIES].sort((a, b) => FIAT_NAMES[a].localeCompare(FIAT_NAMES[b])).filter(match);
+  const popular = ['USD', 'EUR', 'GBP', 'JPY', 'CNY'].filter((c) => c !== sel);
+  // _allSorted: by the lower-cased full name (code units)
+  const lower = (c: string) => FIAT_NAMES[c].toLowerCase();
+  const all = [...FIAT_CURRENCIES].sort((a, b) => (lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : 0)).filter(match);
   const RowF = ({ c }: { c: string }) => (
     <button type="button" class="row tap" onClick={() => close(c)} id={`fiat_${c}`}>
       <img src={`./cake/images/flags/${FIAT_FLAG[c]}.png`} alt="" style={{ width: '28px', height: '20px', borderRadius: '4px', objectFit: 'cover' }} />
@@ -214,10 +216,18 @@ function FiatPicker({ close, selected }: { close: (v?: string) => void; selected
     <div class="col" style={{ height: '100%', background: 'var(--surface)' }}>
       <TopBar title={t('select_fiat_currency_title')} onClose={() => close()} />
       <div class="page-body" style={{ padding: '0 16px 90px' }}>
-        {!ql && <><div class="muted" style={{ padding: '8px 4px', fontWeight: 500 }}>{t('picker_section_selected')}</div><div class="list"><RowF c={sel} /></div></>}
-        {popular.length > 0 && <><div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_popular')}</div><div class="list">{popular.map((c) => <RowF c={c} />)}</div></>}
-        <div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_all_currencies')}</div>
-        <div class="list">{all.map((c) => <RowF c={c} />)}</div>
+        {ql ? (
+          // FiatCurrencySearchResults: the matches, or none
+          all.length ? <div class="list" style={{ marginTop: '8px' }} id="fiat_search_results">{all.map((c) => <RowF c={c} />)}</div> : <div class="muted center" style={{ padding: '24px' }} id="fiat_no_matches">{t('picker_no_matches')}</div>
+        ) : (
+          <>
+            <div class="muted" style={{ padding: '8px 4px', fontWeight: 500 }}>{t('picker_section_selected')}</div>
+            <div class="list"><RowF c={sel} /></div>
+            {popular.length > 0 && <><div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_popular')}</div><div class="list">{popular.map((c) => <RowF c={c} />)}</div></>}
+            <div class="muted" style={{ padding: '16px 4px 8px', fontWeight: 500 }}>{t('picker_section_all_currencies')}</div>
+            <div class="list">{all.map((c) => <RowF c={c} />)}</div>
+          </>
+        )}
       </div>
       <div style={{ position: 'absolute', left: '16px', right: '16px', bottom: '24px' }}>
         <div class="search" style={{ borderRadius: '28px' }}>
