@@ -1,6 +1,6 @@
 # Cake Wallet Web
 
-**Open it: <https://portbuster.codeberg.page/cake-web/>** · source: <https://codeberg.org/portbuster/cake-web>
+**Open it: <https://portbuster1337.github.io/cake-web/>** (also on Codeberg: <https://portbuster.codeberg.page/cake-web/>) · source: <https://github.com/portbuster1337/cake-web>
 
 A web client for [Cake Wallet](https://github.com/cake-tech/cake_wallet) that runs **entirely in
 your browser** and sends **every network request through Tor**. It follows the official app
